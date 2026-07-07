@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  /* dataviz reference palette (validated) — light surface */
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #1baf7a;
+  --viz-series-3: #eda100;
+  --viz-series-4: #008300;
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-critical: #d03b3b;
+  --viz-grid: #e1e0d9;
+  --viz-muted: #898781;
+}
+.dark {
+  color-scheme: dark;
+  /* same hues stepped for the dark surface */
+  --viz-series-1: #3987e5;
+  --viz-series-2: #199e70;
+  --viz-series-3: #c98500;
+  --viz-series-4: #008300;
+  --viz-grid: #2c2c2a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+}
+
+/* thin scrollbars for data tables */
+.scroll-thin::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply rounded bg-slate-300 dark:bg-slate-700;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
