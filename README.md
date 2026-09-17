@@ -4,6 +4,8 @@ The staff companion app for **Makko Billi School** — the staff-side counterpar
 
 Backend: the school's live Frappe/ERPNext site at `https://app.makkobillischool.com`. This repo is frontend-only; it creates no data models of its own except where noted in `docs/SPEC.md`.
 
+> **Picking this project up?** Start with **[`docs/HANDOVER.md`](docs/HANDOVER.md)** — architecture, auth flow, data contract, known limits, what isn't built, and the full test plan.
+
 ## Features (v1)
 
 | Area | What it does | Who sees it |
