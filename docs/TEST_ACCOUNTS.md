@@ -2,7 +2,9 @@
 
 Everything here was read from the live site (`app.makkobillischool.com`) on **2026-09-17** via the Frappe MCP. Re-verify before relying on it months from now.
 
-**No passwords are listed and none can be retrieved** — Frappe stores them hashed. To use any account below, sign in as a System Manager on the desk and set a known password on it (User → *account* → Settings → New Password, and uncheck "Send welcome email"). Pick 3–4 accounts, give them one shared throwaway password, test, then reset. Prefer the `@m.b.s` accounts over personal Gmail addresses — they're internal-only and several have never been logged into.
+**No passwords are listed and none can be retrieved** — Frappe stores them hashed. Set your own on the accounts in the shortlist below; see *Setting up the test logins* at the end of this document.
+
+**Choose dormant accounts.** These are real staff accounts. Changing the password on one that is in active use locks that person out of their own account until they reset it. The shortlist below deliberately favours accounts that have **never been logged into**, and notes the last-login date for each.
 
 ---
 
@@ -224,6 +226,64 @@ So **~39 users have the Instructor role but no Instructor record.** They resolve
 6. Sign in as **`felma8899@gmail.com`** — confirm the minimal-access path shows empty states, not errors. Keep DevTools open.
 7. Sign in as **`sintayehu@m.b.s`** — HR queue visible, Apply hidden.
 8. Only after finding #4 is resolved is it worth re-running steps 3–5 to check the teacher/leadership boundary properly.
+
+---
+
+## Setting up the test logins
+
+### The shortlist — six accounts, one shared password
+
+Chosen for role coverage **and** dormancy. Four of the six have never been logged into, so changing their password inconveniences nobody.
+
+| # | Account | Persona | Last login | Why this one |
+|---|---|---|---|---|
+| 1 | `abel.tadesse@m.b.s` | Teacher **+ homeroom** | 2026-02-18 | The only account combining a real Instructor record, 4 taught pairs with results, homeroom Grade 4 C (53 students) and an Employee record. Non-negotiable. |
+| 2 | `adanu.teklu@m.b.s` | Wide-scope teacher | **never** | 11 groups / 11 pairs (PE, Grades 1–2), results on every pair |
+| 3 | `dagim.tahir@m.b.s` | Teacher, **empty schedule** | 2026-03-21 | Homeroom Grade 12 A but zero Course Schedule rows — the empty-`subjectPairs` path |
+| 4 | `girma.gadissa@m.b.s` | **Director** + Education Manager | **never** | Employee ✓, no Instructor record — leadership view with teacher features degraded |
+| 5 | `haji.ketema@m.b.s` | **Director**, no Employee | **never** | Same roles as #4 but no Employee record — `/leave` should say "No employee record linked" |
+| 6 | `felma8899@gmail.com` | **Minimal access** | 2026-03-05 | Insights User + Scholarship Supervisor only — the negative test |
+
+**Swaps made from the earlier draft, and why:** `muktar.abdulkerim@m.b.s` (signed in 2026-09-14), `abdi.yonas@m.b.s` (2026-09-04) and `tolera.negassa@m.b.s` (2026-08-22) are all in active use. `girma.gadissa@m.b.s` and `haji.ketema@m.b.s` carry the identical role set (Academics User, Director, Education Manager, Insights User, Instructor) and have never signed in, so they test the same thing without locking anyone out.
+
+### HR and System Manager — use your own account
+
+Do **not** change `sintayehu@m.b.s` or `wubetmekasha21@gmail.com`; both are actively used, and all seven HR-role holders signed in within the last few weeks. You don't need them: `makkobillischool@gmail.com` already holds **HR Manager, HR User, Leave Approver, System Manager, Director and Education Manager**, which covers the HR queue, the feedback inbox, broadcasts and full leadership in one account you already have the password for.
+
+### Suggested password
+
+```
+MbsStaff-Test-2026!
+```
+
+19 characters, mixed case, digit and symbol — passes Frappe's default policy. Change it if you prefer; just keep it uniform across the six so you can switch personas quickly.
+
+### How to set it
+
+**Preferred — bench console** (no notification emails, writes straight to `__Auth`):
+
+```bash
+bench --site app.makkobillischool.com console
+```
+```python
+from frappe.utils.password import update_password
+for u in [
+    "abel.tadesse@m.b.s",
+    "adanu.teklu@m.b.s",
+    "dagim.tahir@m.b.s",
+    "girma.gadissa@m.b.s",
+    "haji.ketema@m.b.s",
+    "felma8899@gmail.com",
+]:
+    update_password(u, "MbsStaff-Test-2026!")
+frappe.db.commit()
+```
+
+**Or from the desk**: User list → open each account → Settings section → **Set New Password** → Save. Depending on your Frappe version this may queue a "password updated" notification to the account holder — watch the Email Queue if that matters, particularly for `felma8899@gmail.com`, which is a personal Gmail address.
+
+### Afterwards
+
+These are Director- and Education-Manager-level accounts with read access to 3,444 students' records, and they will all share one password for the duration of testing. When you're done, rotate them: either set fresh random passwords, or disable the accounts that were dormant to begin with (#2, #4, #5 had never been used). Don't leave the shared credential live.
 
 ---
 
