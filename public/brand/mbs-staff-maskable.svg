@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MBS Staff</title>
+  <desc id="desc">Two students celebrating above an open book, inspired by the Makko Billi School mark.</desc>
+  <defs>
+    <linearGradient id="navy" x1="34" y1="22" x2="478" y2="490" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#252B5E"/>
+      <stop offset="1" stop-color="#11152F"/>
+    </linearGradient>
+    <radialGradient id="gold" cx="0" cy="0" r="1" gradientTransform="translate(256 214) rotate(90) scale(198)">
+      <stop stop-color="#FFE07A"/>
+      <stop offset="1" stop-color="#F7C848"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#navy)"/>
+  <circle cx="256" cy="242" r="181" fill="url(#gold)"/>
+  <circle cx="256" cy="242" r="159" fill="none" stroke="#FFF5CD" stroke-opacity=".45" stroke-width="2"/>
+
+  <!-- official-logo-inspired student pair -->
+  <g stroke="#FFF9E6" stroke-width="4" stroke-linejoin="round">
+    <circle cx="201" cy="191" r="30" fill="#333A9B"/>
+    <path fill="#333A9B" d="M197 228c-31 3-58-10-73-35-7-12-11-26-10-39 1-9 8-12 13-5 8 12 12 25 23 34 15 13 33 19 53 18 23-1 42-13 55-31 8-11 11-24 14-38 2-9 11-10 13-1 4 22-3 47-16 65-11 15-24 25-39 32-8 22-4 49 1 77l24 88-62-80-58 80 25-100c8-31 12-64 2-91z"/>
+    <circle cx="312" cy="171" r="32" fill="#E970A7"/>
+    <path fill="#E970A7" d="M308 210c-18-2-34-9-48-21-15-13-24-30-28-50-2-10 7-13 13-4 8 13 15 25 27 34 17 13 37 18 58 14 21-4 38-16 50-33 7-9 11-20 15-31 3-9 12-7 13 2 2 18-4 39-15 55-12 17-28 29-47 36-5 31-1 63 8 94l30 89-65-81-59 81 27-101c8-30 11-60 2-91z"/>
+  </g>
+
+  <!-- open book: the shared school foundation -->
+  <path d="M112 390c52-12 101-9 144 12 43-21 92-24 144-12l-7 44c-48-13-91-8-137 17-46-25-89-30-137-17z" fill="#151A3B"/>
+  <path d="M126 402c45-7 86-1 130 22 44-23 85-29 130-22" fill="none" stroke="#FFF9E6" stroke-width="7" stroke-linecap="round"/>
+  <path d="M256 423v28" stroke="#F7C848" stroke-width="7" stroke-linecap="round"/>
+</svg>

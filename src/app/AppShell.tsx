@@ -98,7 +98,7 @@ export default function AppShell() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
           <button onClick={() => navigate("/")} className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-bold text-white">MB</span>
+            <img src="/brand/mbs-staff-mark.svg" alt="" className="h-9 w-9 rounded-xl shadow-sm" />
             <span className="hidden text-left sm:block">
               <span className="block text-sm font-bold leading-tight">Makko Billi Staff</span>
               <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400">{dualDate(new Date())}</span>
