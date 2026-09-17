@@ -5,6 +5,8 @@ The staff companion app for **Makko Billi School** — the staff-side counterpar
 Backend: the school's live Frappe/ERPNext site at `https://app.makkobillischool.com`. This repo is frontend-only; it creates no data models of its own except where noted in `docs/SPEC.md`.
 
 > **Picking this project up?** Start with **[`docs/HANDOVER.md`](docs/HANDOVER.md)** — architecture, auth flow, data contract, known limits, what isn't built, and the full test plan.
+>
+> **About to test it?** Read **[`docs/TEST_ACCOUNTS.md`](docs/TEST_ACCOUNTS.md)** first — real staff accounts to test each persona with, plus four live-data findings (two of them blockers) that will otherwise make the app look broken.
 
 ## Features (v1)
 
@@ -36,7 +38,11 @@ npm run build          # typecheck + production build to dist/
 Environment:
 
 - `VITE_FRAPPE_URL` — the Frappe site (default `https://app.makkobillischool.com`)
-- `VITE_OAUTH_CLIENT_ID` — OAuth Client id. **`ci3eeqp3lv` ("MBS Staff PWA") is already registered** on the site with redirect URIs `http://localhost:5173/oauth/callback` and `https://staff.makkobillischool.com/oauth/callback`. When you deploy to a different origin, add `<origin>/oauth/callback` to that OAuth Client's redirect URIs.
+- `VITE_OAUTH_CLIENT_ID` — OAuth Client id. **`ci3eeqp3lv` ("MBS Staff PWA") is registered** on the site. Its redirect URIs, verified against the live site, are:
+  - `https://staff.makkobillischool.com/oauth/callback`
+  - `https://mbs-staff-app.pages.dev/oauth/callback`
+
+  **`http://localhost:5173/oauth/callback` is NOT registered** — local dev sign-in will fail with a redirect-URI mismatch until someone with desk access adds it to that OAuth Client. Same for any other new origin you deploy to.
 
 ## Auth & permissions model
 

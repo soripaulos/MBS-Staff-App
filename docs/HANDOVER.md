@@ -41,14 +41,14 @@ npm run icons        # regenerates PWA icons via sharp (rarely needed)
 - `VITE_FRAPPE_URL` — defaults to `https://app.makkobillischool.com`
 - `VITE_OAUTH_CLIENT_ID` — **`ci3eeqp3lv`** ("MBS Staff PWA"), already registered on the live site
 
-### The port matters
+### ⚠ The redirect URI blocks local dev today
 
-The redirect URI is computed at runtime as `` `${window.location.origin}/oauth/callback` `` (`src/lib/config.ts`). The OAuth Client on the Frappe site has exactly two redirect URIs registered:
+The redirect URI is computed at runtime as `` `${window.location.origin}/oauth/callback` `` (`src/lib/config.ts`). OAuth Client `ci3eeqp3lv` on the live site has exactly two registered, verified 2026-09-17:
 
-- `http://localhost:5173/oauth/callback`
 - `https://staff.makkobillischool.com/oauth/callback`
+- `https://mbs-staff-app.pages.dev/oauth/callback`
 
-If Vite falls back to port 5174 because 5173 is occupied, **sign-in will fail with a redirect-URI mismatch**. Check the port before debugging anything else. When deploying to a new origin, add `<origin>/oauth/callback` to that OAuth Client on the Frappe desk first.
+**`http://localhost:5173/oauth/callback` is not among them**, so signing in from `npm run dev` fails with a redirect-URI mismatch until someone adds it on the Frappe desk (OAuth Client → `ci3eeqp3lv` → Redirect URIs, space or newline separated). Do that first, or test against the Pages deployment instead. The same applies to any new origin. Note also that if Vite falls back to port 5174 because 5173 is taken, the origin changes and sign-in breaks again.
 
 ---
 
