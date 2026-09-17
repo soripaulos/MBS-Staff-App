@@ -24,6 +24,11 @@ const Messages = lazy(() => import("@/features/messages/MessagesPage"));
 const Evaluations = lazy(() => import("@/features/evaluations/EvaluationsPage"));
 const NewStudentEvaluation = lazy(() => import("@/features/evaluations/NewStudentEvaluationPage"));
 const Analytics = lazy(() => import("@/features/analytics/AnalyticsPage"));
+const AttendanceInsight = lazy(() => import("@/features/attendance/AttendanceInsightPage"));
+const LessonPlans = lazy(() => import("@/features/lessons/LessonPlansPage"));
+const LessonPlanEditor = lazy(() => import("@/features/lessons/LessonPlanEditorPage"));
+const Tasks = lazy(() => import("@/features/tasks/TasksPage"));
+const StaffFeedback = lazy(() => import("@/features/feedback/StaffFeedbackPage"));
 const StaffLeave = lazy(() => import("@/features/leave/StaffLeavePage"));
 const More = lazy(() => import("@/features/more/MorePage"));
 
@@ -88,7 +93,13 @@ export default function App() {
                     ["/results/student/:id", StudentResults],
                     ["/attendance", DailyRegister],
                     ["/attendance/records", Attendance],
+                    ["/attendance/insight", AttendanceInsight],
                     ["/attendance/take/:scheduleId", TakeAttendance],
+                    ["/lessons", LessonPlans],
+                    ["/lessons/new", LessonPlanEditor],
+                    ["/lessons/:id", LessonPlanEditor],
+                    ["/tasks", Tasks],
+                    ["/feedback", StaffFeedback],
                     ["/students", Students],
                     ["/students/:id", StudentDetail],
                     ["/students/:id/evaluate", NewStudentEvaluation],

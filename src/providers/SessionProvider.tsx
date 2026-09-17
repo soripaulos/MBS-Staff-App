@@ -24,6 +24,12 @@ export interface StaffContext {
   isAcademicAdmin: boolean;
   isLeadership: boolean;
   isAdmin: boolean;
+  /**
+   * Cancelling and re-entering a submitted attendance record is deliberately
+   * the Director's alone — a submitted register is the school's record of the
+   * day, and a teacher who made a mistake asks for it to be reopened.
+   */
+  isDirector: boolean;
   isHR: boolean;
   canBroadcast: boolean;
   /** True for the group where this user is `custom_homeroom_teacher`. */
@@ -192,6 +198,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     isAcademicAdmin: roles.some((r) => ADMIN_ROLES.includes(r)),
     isLeadership,
     isAdmin: roles.some((r) => ADMIN_ROLES.includes(r)),
+    isDirector: roles.includes("Director") || roles.includes("System Manager"),
     isHR: roles.some((r) => HR_ROLES.includes(r)),
     canBroadcast: roles.some((r) => BROADCAST_ROLES.includes(r)),
     isHomeroomOf,

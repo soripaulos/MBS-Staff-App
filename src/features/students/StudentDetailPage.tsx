@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GraduationCap, Plus, Trophy } from "lucide-react";
-import { createDoc, fileUrl, getDoc, getList } from "@/lib/api";
+import { GraduationCap, MessageSquare, Plus, Trophy } from "lucide-react";
+import { createDoc, fileUrl, getDoc, getList, updateDoc } from "@/lib/api";
 import { formatDate, today } from "@/lib/dates";
 import { cn, initials, ratingToStars, stripHtml } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
-import type { StudentDoc } from "@/lib/types";
+import type { DisciplineIncidentRow, StudentDoc } from "@/lib/types";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Label, ListSkeleton, Modal, PageTitle, Select, Stars, Tabs, Textarea, statusTone } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -21,6 +21,8 @@ interface TimelineItem {
   detail?: string;
   badge?: string;
   badgeTone?: "slate" | "green" | "amber" | "red" | "blue";
+  /** Set on rows that can still be acted on — today, only discipline incidents. */
+  incident?: DisciplineIncidentRow;
 }
 
 function useTimeline(student: string) {
@@ -35,7 +37,7 @@ function useTimeline(student: string) {
           return [];
         }
       };
-      const [activities, incidents, discipline, lates, sicks, permissions] = await Promise.all([
+      const [activities, discipline, lates, sicks, permissions] = await Promise.all([
         safe(() =>
           getList<{ activity_type?: string; activity_date?: string; title?: string; role?: string; description?: string }>("Student Activity", {
             filters: [["student", "=", student]],
@@ -44,24 +46,18 @@ function useTimeline(student: string) {
             limit: 50,
           }),
         ),
+        // `Student Discipline Incident` is the only incident doctype the app
+        // reads or writes; `Student Incident` is deliberately left alone.
         safe(() =>
-          getList<{ incident_date: string; incident_type?: string; status?: string; description?: string }>("Student Incident", {
+          getList<DisciplineIncidentRow>("Student Discipline Incident", {
             filters: [["student", "=", student]],
-            fields: ["incident_date", "incident_type", "status", "description"],
+            fields: [
+              "name", "student", "incident_date", "incident_type", "severity",
+              "status", "description", "reported_by", "parent_response", "resolution",
+            ],
             orderBy: "incident_date desc",
             limit: 50,
           }),
-        ),
-        safe(() =>
-          getList<{ incident_date: string; incident_type?: string; severity?: string; status?: string; description?: string }>(
-            "Student Discipline Incident",
-            {
-              filters: [["student", "=", student]],
-              fields: ["incident_date", "incident_type", "severity", "status", "description"],
-              orderBy: "incident_date desc",
-              limit: 50,
-            },
-          ),
         ),
         safe(() =>
           getList<{ date: string; reason?: string }>("Student Late Record", {
@@ -98,23 +94,15 @@ function useTimeline(student: string) {
           badge: a.activity_type,
           badgeTone: a.activity_type === "Achievement" ? "green" : "blue",
         });
-      for (const i of incidents)
-        items.push({
-          kind: "Incident",
-          date: i.incident_date,
-          title: `${i.incident_type ?? "Incident"}`,
-          detail: stripHtml(i.description),
-          badge: i.status,
-          badgeTone: statusTone(i.status),
-        });
       for (const i of discipline)
         items.push({
           kind: "Incident",
-          date: i.incident_date,
-          title: `Discipline · ${i.incident_type ?? ""}${i.severity ? ` (${i.severity})` : ""}`,
+          date: i.incident_date ?? "",
+          title: `${i.incident_type ?? "Incident"}${i.severity ? ` · ${i.severity}` : ""}`,
           detail: stripHtml(i.description),
           badge: i.status,
           badgeTone: statusTone(i.status),
+          incident: i,
         });
       for (const l of lates) items.push({ kind: "Late", date: l.date, title: "Late arrival", detail: l.reason, badge: "Late", badgeTone: "amber" });
       for (const s of sicks)
@@ -129,9 +117,92 @@ function useTimeline(student: string) {
 
 const TIMELINE_FILTERS = ["All", "Achievement", "Activity", "Incident", "Late", "Sick", "Leave"];
 
+/**
+ * An incident a teacher files is only half the job — the other half is saying
+ * how it ended. Opening one here lets whoever dealt with it write the
+ * resolution and close it, which is what stopped incidents piling up as Open
+ * forever.
+ */
+function IncidentModal({
+  incident,
+  student,
+  onClose,
+}: {
+  incident: DisciplineIncidentRow | null;
+  student: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [resolution, setResolution] = useState("");
+  const open = !!incident;
+
+  useEffect(() => {
+    setResolution(stripHtml(incident?.resolution));
+  }, [incident]);
+
+  const save = useMutation({
+    mutationFn: ({ close }: { close: boolean }) =>
+      updateDoc("Student Discipline Incident", incident!.name, {
+        resolution,
+        ...(close ? { status: "Closed" } : {}),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["student-timeline", student] });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Discipline incident">
+      {incident && (
+        <div className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={statusTone(incident.status)}>{incident.status}</Badge>
+            {incident.severity && <Badge tone={incident.severity === "High" ? "red" : incident.severity === "Medium" ? "amber" : "slate"}>{incident.severity}</Badge>}
+            <span className="text-xs text-slate-500">
+              {incident.incident_type} · {formatDate(incident.incident_date)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+            <p className="text-xs font-medium uppercase text-slate-400">What happened</p>
+            <p className="mt-1 whitespace-pre-wrap">{stripHtml(incident.description) || "—"}</p>
+          </div>
+          {incident.parent_response && (
+            <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-800/60">
+              <p className="text-xs font-medium uppercase text-slate-400">Parent responded</p>
+              <p className="mt-1 whitespace-pre-wrap">{stripHtml(incident.parent_response)}</p>
+            </div>
+          )}
+          <div>
+            <Label>Resolution</Label>
+            <Textarea
+              rows={3}
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              placeholder="What was done, who was spoken to, what was agreed…"
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" disabled={save.isPending} onClick={() => save.mutate({ close: false })}>
+              Save note
+            </Button>
+            {incident.status !== "Closed" && (
+              <Button disabled={save.isPending || !resolution.trim()} onClick={() => save.mutate({ close: true })}>
+                {save.isPending ? "Saving…" : "Resolve & close"}
+              </Button>
+            )}
+          </div>
+          {save.isError && <p className="text-xs text-red-600">{(save.error as Error).message}</p>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function TimelineTab({ student }: { student: string }) {
   const q = useTimeline(student);
   const [filter, setFilter] = useState("All");
+  const [incident, setIncident] = useState<DisciplineIncidentRow | null>(null);
   if (q.isLoading) return <ListSkeleton rows={6} />;
   if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const items = (q.data ?? []).filter((i) => filter === "All" || i.kind.startsWith(filter));
@@ -156,22 +227,37 @@ function TimelineTab({ student }: { student: string }) {
         <EmptyState title="Nothing here yet" hint="Activities, achievements, incidents and attendance events will appear here." icon={<Trophy size={40} />} />
       ) : (
         <ul className="space-y-2">
-          {items.map((i, idx) => (
-            <li key={idx}>
-              <Card className="flex items-start gap-3">
+          {items.map((i, idx) => {
+            const body = (
+              <Card className={cn("flex items-start gap-3", i.incident && "transition-shadow hover:shadow-md")}>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">{i.title}</p>
                   {i.detail && <p className="mt-0.5 line-clamp-3 text-xs text-slate-500">{i.detail}</p>}
+                  {i.incident?.status === "Open" && (
+                    <p className="mt-1 text-[11px] font-medium text-amber-600">Tap to record how it was resolved</p>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="text-xs text-slate-400">{formatDate(i.date)}</span>
                   {i.badge && <Badge tone={i.badgeTone ?? "slate"}>{i.badge}</Badge>}
                 </div>
               </Card>
-            </li>
-          ))}
+            );
+            return (
+              <li key={idx}>
+                {i.incident ? (
+                  <button className="w-full text-left" onClick={() => setIncident(i.incident!)}>
+                    {body}
+                  </button>
+                ) : (
+                  body
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
+      <IncidentModal incident={incident} student={student} onClose={() => setIncident(null)} />
     </div>
   );
 }
@@ -503,12 +589,22 @@ export default function StudentDetailPage() {
         <div className="min-w-0 flex-1">
           <PageTitle title={displayName ?? id!} subtitle={`${s.custom_school_id ?? s.name}${s.gender ? ` · ${s.gender}` : ""}`} />
         </div>
-        <Link
-          to={`/results/student/${encodeURIComponent(id!)}`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          <GraduationCap size={16} /> Results
-        </Link>
+        <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">
+          {(session.isTeacher || session.isLeadership) && (
+            <Link
+              to={`/messages?student=${encodeURIComponent(id!)}&compose=1`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <MessageSquare size={16} /> <span className="hidden sm:inline">Message parent</span>
+            </Link>
+          )}
+          <Link
+            to={`/results/student/${encodeURIComponent(id!)}`}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <GraduationCap size={16} /> Results
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-2">

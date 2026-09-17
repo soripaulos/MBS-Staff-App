@@ -3,13 +3,17 @@ import { Link } from "react-router-dom";
 import {
   Bell,
   BellRing,
+  BookOpen,
   Briefcase,
   CalendarDays,
   ChartNoAxesCombined,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   Download,
+  GraduationCap,
   MessageSquare,
+  MessageSquarePlus,
   Moon,
   Star,
   Sun,
@@ -47,23 +51,34 @@ export default function MorePage() {
     {
       heading: "Teaching",
       items: [
+        { to: "/timetable", label: "Timetable", hint: "Your full week and section timetables", icon: <CalendarDays size={20} />, show: true },
         { to: "/students", label: "Students", hint: "Rosters, profiles, records, evaluations", icon: <Users size={20} />, show: session.isTeacher || session.isLeadership },
-        { to: "/timetable", label: "Timetable", hint: "Your week and section timetables", icon: <CalendarDays size={20} />, show: !teaches },
-        { to: "/attendance/records", label: "Attendance records", hint: "Late, sick and permission history", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/lessons", label: "Lesson plans", hint: "Objectives, what was covered, what carries over", icon: <BookOpen size={20} />, show: session.isTeacher },
+        { to: "/results", label: "Results", hint: "Marks, section overview, corrections", icon: <GraduationCap size={20} />, show: !teaches && session.isLeadership },
+      ],
+    },
+    {
+      heading: "Attendance",
+      items: [
+        { to: "/attendance", label: "Daily register", hint: "Mark a whole section for the day", icon: <ClipboardCheck size={20} />, show: !teaches && session.isLeadership },
+        { to: "/attendance/records", label: "Records & leave requests", hint: "Late, sick, permission, and parent leave requests", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/attendance/insight", label: "Attendance insight", hint: "Who is slipping, and why", icon: <ChartNoAxesCombined size={20} />, show: session.isTeacher || session.isLeadership },
       ],
     },
     {
       heading: "Communication",
       items: [
-        { to: "/messages", label: "Parent messages", hint: "Your threads with parents", icon: <MessageSquare size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/messages", label: "Parent messages", hint: "Your conversations with parents", icon: <MessageSquare size={20} />, show: session.isTeacher || session.isLeadership },
         { to: "/notifications", label: "Notifications", hint: "Your inbox and school broadcasts", icon: <Bell size={20} />, show: true },
       ],
     },
     {
       heading: "You",
       items: [
+        { to: "/tasks", label: "My tasks", hint: "Work assigned to you by the school", icon: <ClipboardList size={20} />, show: true },
         { to: "/evaluations", label: "My evaluations", hint: "Anonymous ratings of your teaching", icon: <Star size={20} />, show: session.isTeacher || session.isLeadership },
         { to: "/leave", label: "My leave", hint: "Apply and track your leave", icon: <Briefcase size={20} />, show: !!session.employee || session.isHR },
+        { to: "/feedback", label: "Staff feedback", hint: "Raise something with the school", icon: <MessageSquarePlus size={20} />, show: true },
         { to: "/analytics", label: "Insights", hint: "School-wide trends", icon: <ChartNoAxesCombined size={20} />, show: session.isLeadership },
       ],
     },

@@ -247,14 +247,18 @@ Conventions worth knowing:
 | `Student Year Report` | `student`, `student_name`, `academic_year`, `year_average`, `rank_in_group` | Results |
 | `Appeal Result` | `student_name`, `student_group`, `subject`, `exam`, `original_score`, `original_max_score`, `reason`, `attachment`, `status`, `resolution`, `semester` | Results › Appeals |
 | `Student` | `student_name`, `image`, `gender`, `date_of_birth`, `joining_date`, `student_email_id`, `custom_school_id`, `custom_government_student_id`, `custom_student_category`, `custom_mode_of_transport`, `enabled`, `guardians[]` | Students |
-| `Student Log` | `type`, `date`, `log` | Student timeline |
 | `Student Activity` | `activity_type`, `activity_date`, `title`, `role`, `description` | Student timeline |
-| `Student Incident`, `Student Discipline Incident` | `incident_date`, `incident_type`, `severity`, `status`, `description` | Student timeline |
+| `Student Discipline Incident` | `incident_date`, `incident_type`, `severity`, `status`, `description`, `reported_by`, `parent_response`, `resolution` | Student timeline |
+| `Result Correction Request` | all fields; student/section/subject/exam/scores are `fetch_from` the linked result | Results › Corrections |
+| `Lesson Plan` (+ child `Lesson Plan Objective`) | all fields; `coverage` is computed server-side | Lesson plans |
+| `ToDo` | `status`, `priority`, `date`, `allocated_to`, `description`, `reference_type`, `reference_name`, `assigned_by_full_name` | My tasks |
+| `Staff Feedback` | `subject`, `category`, `status`, `details`, `raised_by`, `raised_on`, `response`, `responded_by` | Staff feedback |
 | `Student Late Day` | `student`, `date`, `time`, `reason` | Attendance, timeline, analytics |
 | `Student Sick Day` | `student`, `date`, `type`, `details`, `parent_contacted`, `leave_early` | Attendance, timeline, analytics |
 | `Student Permission Leave` | `student`, `date`, `time`, `reason`, `detail` | Attendance, timeline |
-| `Student Leave Application` | `student`, `student_name`, `from_date`, `to_date`, `total_leave_days`, `reason`, `custom_status`, `docstatus` | Attendance › Leave |
-| `Student Attendance` | `student`, `status`, `docstatus`, `course_schedule` | Take attendance |
+| `Student Leave Application` | `student`, `student_name`, `student_group`, `from_date`, `to_date`, `total_leave_days`, `reason`, `custom_status`, `custom_supporting_document`, `docstatus` | Attendance › Leave requests |
+| `Student Attendance` | `student`, `date`, `status`, `docstatus`, `course_schedule`, `student_group` | Registers, Attendance insight |
+| `Student Late Record` / `Student Sick Record` | `student`, `date`, `time`/`type`, `docstatus` | Registers, Attendance insight |
 | `Student Evaluation` | `students`, `class`, `reviewer`, `review_date`, `feedback`, ~19 Rating fields | Student 360 › Evaluations |
 | `Teacher Evaluation` | `instructors`, `student_group`, `review_date`, `respect`, `exams`, `communication_skill`, `followup`, `homework`, `knowledge` | Evaluations |
 | `Teacher Parent Message` | full thread fields | Messages |
@@ -268,17 +272,24 @@ Conventions worth knowing:
 
 | Doctype | Operation | Page |
 |---|---|---|
-| `Student Attendance` | create (+submit), or `set_value` on a draft; bulk via Education API | Take attendance |
-| `Student Late Day` / `Student Sick Day` / `Student Permission Leave` | create + best-effort submit | Attendance forms |
-| `Student Log`, `Student Activity` | create | Student 360 › Add |
-| `Teacher Parent Message` | create; update `teacher_followup` + date | Messages |
+| `Student Attendance` | create as **draft**, `set_value` while draft, submit on an explicit action; `cancel` for a Director reopening a submitted row; bulk via Education API | Daily register, Take attendance |
+| `Student Late Record` / `Student Sick Record` / `Student Permission Leave` | create as draft, submit alongside the register | Registers, Attendance forms |
+| `Student Activity` | create | Student 360 › Add |
+| `Student Discipline Incident` | create; update `resolution` + `status` | Student 360 |
+| `Student Leave Application` | update `custom_status` only | Attendance › Leave requests |
+| `Result Correction Request` | create; update `status` + `resolution` | Results › Corrections |
+| `Student Term Subject Result` | **cancel + amend + submit**, and only when a reviewer applies a correction | Results › Corrections |
+| `Lesson Plan` | create, update (incl. objectives table) | Lesson plans |
+| `ToDo` | update `status` only | My tasks |
+| `Staff Feedback` | create; update `status` + `response` | Staff feedback |
+| `Teacher Parent Message` | create; update `teacher_followup` + date, then append to `custom_conversation` | Messages |
 | `Appeal Result` | update `status` + `resolution` | Results › Appeals |
 | `Student Feedback` | update `status` | Notifications › Feedback |
 | `App Notification` | create as **Draft** | Notifications › compose |
 | `Notification Log` | `set_value read = 1` | Inbox |
 | `Leave Application` | create with `status: "Open"` | Staff leave |
 
-**The app never writes a score.** Correcting a mark is a desk operation (submitted docs need cancel + amend); the Appeals UI says so explicitly.
+**Teachers never write a score.** `Instructor` write and create on `Student Term Subject Result` were revoked; a teacher raises a `Result Correction Request` instead. The one place the app touches a mark is a reviewer applying such a request, which is a cancel + amend + submit — Education Manager and System Manager only.
 
 ### Two conventions that are easy to get wrong
 
@@ -300,11 +311,13 @@ Two modes: **My timetable** (by instructor) and **Section timetable** (by group)
 *Limit*: holidays are read from the `Holiday` child table across **all** Holiday Lists in the date range, with no filtering by `Holiday Student Group`. If the school scopes holidays per section, this will over-report.
 
 ### Results (`/results`)
-Four tabs: **Marks grid** (student × exam pivot, computed total/%/grade, sticky header and first column, CSV export), **Section overview** (rank + per-subject percentages + term average, falling back to raw results when Term Reports haven't been generated), **Year** (Year Report ranks), **Appeals**.
+Five tabs: **Marks grid** (student × exam pivot, computed total/%/grade, sticky header and first column, CSV export), **Section overview** (rank + per-subject percentages + term average, falling back to raw results when Term Reports haven't been generated), **Year** (Year Report ranks), **Corrections**, **Appeals**.
 
 Scoping: the subject dropdown comes from `useGroupSubjects` — teachers get only their `subjectPairs` for that group; homeroom teachers and leadership get every subject that has results there. Section overview and Year tabs only render for homeroom or leadership.
 
-*Limit*: **Appeals are fetched unfiltered and narrowed client-side** to the teacher's subject/section pairs. The server must enforce this properly (see `PERMISSIONS.md` hardening list) — until then a teacher's browser has received rows it doesn't display.
+**Marks are read-only for everyone in this app.** Tapping a score in the grid opens a correction request: pick what is wrong, give the correct score, say why. It goes to whoever enters results, who sees it under **Corrections** and can mark it in review, reject it, or **apply** it. Applying is the only write to a mark anywhere in the codebase — `cancelDoc` on the submitted row, then a new row with `amended_from` pointing at it, then submit — so the original survives as a cancelled document rather than being overwritten. The button only renders for `isAdmin`, matching who actually holds cancel and amend.
+
+*Limit*: **Appeals are fetched unfiltered and narrowed client-side** to the teacher's subject/section pairs. The server must enforce this properly (see `PERMISSIONS.md` hardening list) — until then a teacher's browser has received rows it doesn't display. Corrections do not have this problem: `Instructor` holds `if_owner` on the doctype, so the server only ever sends a teacher their own.
 
 ### Take attendance (`/attendance/take/:scheduleId`)
 Loads the schedule, the group roster (active, roll-number sorted), and any existing `Student Attendance` for that session. Defaults everyone to Present. Saves only what changed.
@@ -317,19 +330,52 @@ Two save paths in `saveAttendance()`:
 - **The bulk path collapses `Leave` into `students_absent`**, because the Education API only takes present/absent. If any student is marked Leave on a first-save, they will be recorded Absent. Consider forcing the per-doc path whenever a Leave mark is present.
 - **Submitted records are skipped silently** — the loop `continue`s without counting, so the "N records written" message can undercount. Their buttons are disabled in the UI and marked "saved"; correcting them is a desk cancel+amend.
 
-### Attendance records (`/attendance`)
-Tabs for Late / Sick / Permission / student Leave applications, each with a date range (default last 30 days) and a create form. Forms create then **best-effort submit** — if the user lacks submit permission the record stays a draft rather than erroring.
+### Daily register (`/attendance`) — the primary attendance route
+A homeroom teacher marks a whole section for one day in one pass: Present / Late / Absent / Leave per student, with a reason sheet behind Late and Absent that decides whether a `Student Late Record`, `Student Sick Record` or `Student Permission Leave` is written alongside the `Student Attendance` row. A day mark is `Student Attendance` with a `student_group` and **no** `course_schedule` — that absence is how Frappe tells day attendance from lesson attendance.
 
-*Limit*: teacher scoping loads the rosters of **at most the first 12 of their groups** (`groups.slice(0, 12)`) to build the allowed-student set, and the filter applies only once that query resolves — so rows can flash unfiltered on slow connections. Server-side permission conditions are the real fix.
+**Draft, then submit.** `persist(finalize)` is a single pass over the section; `finalize` is the only thing that differs between *Save draft* and *Submit register*, so the two can never write different data. A draft is fully editable, including the linked records. Submitting locks the day: `Instructor` has `submit` but not `cancel` or `amend`, so a teacher cannot change or amend it afterwards. A **Reopen** button appears on submitted rows for `isDirector` only, which cancels the record so the day can be entered again.
+
+Submitting a draft created in an earlier session needs the whole document, not just its name — `submitByName()` re-reads it before calling `frappe.client.submit`.
+
+### Attendance records (`/attendance/records`)
+Tabs for Late / Sick / Permission / **Leave requests**, each with a date range (default last 30 days) and a create form. Forms create then **best-effort submit** — if the user lacks submit permission the record stays a draft rather than erroring.
+
+Leave requests come from parents in the student app. The homeroom teacher of that child's section approves or rejects, and that is *all* they can do: the Before Save guard rejects any change to the dates, reason or attachment, so a decision cannot quietly rewrite the request.
+
+### Attendance insight (`/attendance/insight`)
+Attendance, late, sick, permission and approved leave for one section over a date range, read together. Attendance rate per day, a per-student table sorted worst-first, a breakdown of what is behind the absences (anything not explained by a sick/permission/leave record counts as unexplained), and a **completeness check** that names school days with no register at all. Only day rows count — lesson rows would count the same day several times.
 
 ### Students (`/students`, `/students/:id`)
-Section roster with in-section search; leadership additionally gets school-wide search at 3+ characters. Student 360 has three tabs: **Overview** (profile + guardians), **Records** (a merged, date-sorted timeline of logs, achievements, activities, incidents, discipline incidents, late/sick/permission, with type filters — every source individually `.catch`-guarded so partial permissions still render something), and **Evaluations** (star ratings grouped into Academics / Skills / Habits & conduct).
+Section roster with in-section search; leadership additionally gets school-wide search at 3+ characters. Student 360 has three tabs: **Overview** (profile + guardians), **Records** (a merged, date-sorted timeline of activities, discipline incidents and late/sick/permission, with type filters — every source individually `.catch`-guarded so partial permissions still render something), and **Evaluations** (star ratings grouped into Academics / Skills / Habits & conduct). The header carries a *Message parent* shortcut into the compose flow.
+
+Incident rows in the timeline are tappable: the modal shows what happened and any parent response, and lets whoever dealt with it write the resolution and close it. `Student Discipline Incident` is the only incident doctype the app touches — `Student Incident` still exists on the site but is deliberately left alone, and `Instructor` has no permission on it. `Student Log` is not read or written anywhere.
 
 ### Notifications (`/notifications`)
 **My inbox** reads `Notification Log` for the signed-in user with mark-read and mark-all-read; the header bell polls the unread count every 120s. **School broadcasts** lists `App Notification`; authorized roles can compose — and composing **saves a Draft only**. Actual delivery to student devices runs through the school's existing send flow on the desk; the modal says so. **Feedback inbox** (admins) triages `Student Feedback` through Open → In Review → Resolved → Closed.
 
-### Parent messages (`/messages`)
-`Teacher Parent Message` threads: compose to a student, read the parent's reply, add a follow-up. Teachers are filtered to `teacher = session user`; admins see all.
+### Parent messages (`/messages`) — in the bottom bar, not under More
+A chat, not a form. Thread list beside the conversation on desktop, one pane at a time on mobile.
+
+The doctype was built for one message and one reply, and the parents' app reads exactly three fields (`message`, `parent_response`, `teacher_followup`). Rather than break that, a child table `custom_conversation` (`Teacher Parent Message Entry`) holds everything past the first follow-up, and `turnsOf()` stitches the two into one ordered list. So old threads still render, the parents' app keeps working, and the back-and-forth can continue indefinitely. `ChatThread`'s send mutation writes to `teacher_followup` if it is still empty and appends to the table otherwise.
+
+**The message builder** (`messageBuilder.ts`) is the other half. Nine topics — how they are doing, mood, performance, attention, classwork and homework, talking and participation, classmates, punctuality and materials, what happens next — each a row of chips. Picking chips composes a draft into an ordinary textarea the teacher can rewrite; once they start typing, the builder stops overwriting them, and a *Rebuild from selections* link puts it back. Adding a topic means appending to `SECTIONS` and nothing else.
+
+Sentences use the student's first name rather than a pronoun, on purpose: the gender field is not reliably filled and a message home is the worst place to guess.
+
+### Lesson plans (`/lessons`)
+**This week** lists your timetabled lessons with their plan attached, and a dashed card with a *Plan* button for each lesson that has none — the only place "which of my lessons has no plan" is visible at a glance. **All plans** is the filterable record.
+
+The editor's objectives table is the point: each objective carries an outcome (Not started / Partly / Achieved) and a carry-forward flag, and `coverage` is computed **server-side** from those outcomes so the number a head of department sees is the one the teacher recorded.
+
+`carryForward.ts` moves what didn't land. It looks for the next timetabled lesson for that section and subject; if a plan already exists there the objectives are appended to it, otherwise a new plan is created on that date. If the timetable has nothing ahead — end of term, a gap, a section whose schedule isn't entered — they go to the next school day with no course schedule attached. The source plan records `carried_to` and flips to Partially taught / Not taught, which is also what stops it being carried twice.
+
+*Status*: a first pass. The field set is a guess at a conventional lesson-plan format and is expected to change once the school's own example documents arrive.
+
+### My tasks (`/tasks`)
+The `ToDo` records allocated to the signed-in user. An instructor can tick one off or reopen it and **nothing else** — no `create` permission, and a Before Save guard rejects any change other than `status`, so they cannot assign work to anybody or edit what a task says. The page offers only the checkbox, so the guard is a backstop rather than the first thing they meet.
+
+### Staff feedback (`/feedback`)
+The mirror of `Student Feedback`. Staff raise something with a category; leadership sees everything, replies and sets the status. Not anonymous, and the compose form says so.
 
 ### Teacher evaluations (`/evaluations`)
 Aggregates of `Teacher Evaluation` per criterion. **The `reviewer` field is never requested from the server** — anonymity is preserved at the query level, not by hiding a column. Teachers query only their own rows; leadership sees a per-teacher table with expandable detail.
@@ -378,9 +424,9 @@ Workbox runtime caching:
 ## 11. What is NOT built
 
 ### Open decisions awaiting the product owner
-1. **`Staff Feedback` doctype** — the staff→school channel. Specified in `SPEC.md` §5.6 (fields, anonymity flag, role permissions) but **not created on the live site and not wired in the UI**, because creating a production doctype needs explicit approval.
+1. ~~**`Staff Feedback` doctype**~~ — created and wired (`/feedback`). Not anonymous: the spec's anonymity flag was dropped, since a reply is the point and an anonymous one cannot be replied to.
 2. **Staff broadcast delivery** — v1 only reaches staff through the in-app bell. Extending `App Notification` with staff recipients (or a parallel doctype) is a production schema change.
-3. **Web push server side** — VAPID keys, a `Staff Push Subscription` doctype, a `notify_user` util and hooks.
+3. **Web push server side** — VAPID keys, a `Staff Push Subscription` doctype, a `notify_user` util and hooks. **The one piece of the original brief never attempted.** The service worker handlers ship already.
 
 ### Deliverables from the brief that were not produced
 4. **`server/`** — the brief asks that every new doctype, whitelisted method and permission config live in the repo as applyable Frappe fixtures with an install guide. This directory does not exist.
@@ -389,8 +435,9 @@ Workbox runtime caching:
 7. **Lighthouse PWA audit** — never run.
 
 ### Unresolved data questions
-8. **The twin doctypes.** `SPEC.md` §5.4 notes that `Student Late Day`/`Student Late Record` and `Student Sick Day`/`Student Sick Record` both exist, and asks that row counts decide which is live. The app uses the **`Day`** variants throughout. This choice was never confirmed against row counts — if the school actually writes the `Record` variants, Attendance, the student timeline and Analytics are all reading empty tables.
+8. ~~**The twin doctypes.**~~ Resolved: the app reads and writes `Student Late Record` and `Student Sick Record` throughout, at the school's instruction. The `Day` variants still exist on the site with their permissions repaired, but nothing in the app touches them.
 9. **`has_permission` gating** (§5 above) — persona role-lists are hardcoded, so new roles need a code change.
+10. **Lesson plan format.** The `Lesson Plan` field set is a first pass; the school has example documents to share that will likely change it.
 
 ---
 

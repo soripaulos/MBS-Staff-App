@@ -40,19 +40,23 @@ Three problems made the original model meaningless against real data.
 
 | Doctype | read | write | create | delete | submit |
 |---|---|---|---|---|---|
-| Student Term Subject Result | ✓ | ✓ | ✓ | — | — |
+| Student Term Subject Result | ✓ | **—** | **—** | — | — |
+| Result Correction Request | ✓ (own) | ✓ (own) | ✓ | — | — |
 | Student Term Report / Year Report | ✓ | — | — | — | — |
 | Student, Student Group, Instructor, Course, Program, Room, Holiday List, Academic Year / Term | ✓ | — | — | — | — |
 | Course Schedule | ✓ | — | — | — | — |
-| Student Attendance | ✓ | ✓ | ✓ | — | ✓ |
+| Student Attendance | ✓ | ✓ | ✓ | — | ✓ (no cancel, no amend) |
 | Student Late Day / Sick Day / Permission Leave | ✓ | ✓ | ✓ | — | ✓ |
-| Student Leave Application | ✓ | — | — | — | — |
-| Student Log / Activity / Incident / Discipline Incident | ✓ | ✓ | ✓ | — | — |
-| Student Evaluation | ✓ (own) | ✓ | ✓ | — | — |
+| Student Leave Application | ✓ | **✓ (status only, homeroom)** | — | — | — |
+| Student Activity / Discipline Incident | ✓ | ✓ | ✓ | — | — |
+| Lesson Plan | ✓ | ✓ | ✓ | — | — |
+| ToDo | ✓ | **✓ (status only, own)** | **—** | — | — |
+| Staff Feedback | ✓ (own) | ✓ (own) | ✓ | — | — |
+| Student Evaluation / Student Hub Evaluation | ✓ (own) | ✓ | ✓ | — | — |
 | Teacher Parent Message | ✓ | ✓ | ✓ | **—** | — |
 | Teacher Evaluation | ✓ | — | — | — | — |
 | App Notification | ✓ | — | — | — | — |
-| Appeal Result, Student Feedback | *no permission* | | | | |
+| Appeal Result, Student Feedback, Student Incident | *no permission* | | | | |
 
 Revoked wholesale: `Quiz`, `Question`, `Topic`, `Article`, `Course Activity`, `Bulk Score Entry`, `Student Score`, `Assessment Log Entry`, `Assessment Plan/Result`, `Student Assessment Score` — all verified empty or admin-only before removal.
 
@@ -73,6 +77,9 @@ A user is scoped only when they hold `Instructor` and **none** of `System Manage
 | `MBS - Parent Message Scope` | `teacher` = session user — keyed on the field, not `owner`, so messages filed on their behalf still reach them |
 | `MBS - Teacher Evaluation Scope` | `instructors` = their own Instructor record |
 | `MBS - Student Late Day / Sick Day / Incident Scope` | Students in their own sections |
+| `MBS - Student Discipline Incident Scope` | Students in their own sections |
+| `MBS - Student Leave Application Scope` | Students in their own sections |
+| `MBS - Lesson Plan Scope` | `instructor` = them, OR a section they teach or are homeroom of |
 
 Verified against a real teacher: Abel Tadesse resolves to 4 groups, 191 students of 3,378, and 4,065 marks of 202,262.
 
@@ -84,10 +91,42 @@ Verified against a real teacher: Abel Tadesse resolves to 4 groups, 191 students
 
 Permission queries scope reads, not writes. Creating or modifying `Student Late Day`, `Student Sick Day` and `Student Permission Leave` is gated by **Before Save** server scripts (`MBS - … Homeroom Guard`) that reject anyone who is not the homeroom teacher of that student's section, leadership excepted. The app hides the corresponding controls to match, so the guard is a backstop rather than the first thing a teacher meets.
 
+### Write guards on the newer flows
+
+Frappe's permission model is per-doctype, not per-field, so anything of the form "may change *this* field and nothing else" is a Before Save script. All follow the same shape: work out whether the actor is a plain `Instructor`, and if so compare the incoming doc against what is stored.
+
+| Script | What it enforces |
+|---|---|
+| `MBS - Leave Application Homeroom Guard` | Teachers cannot create a leave request, and may change only `custom_status` — the parent's own words are immutable. Must be homeroom of that student's section. |
+| `MBS - Discipline Incident Guard` | May only file or resolve incidents for students in sections they teach; stamps `reported_by`. |
+| `MBS - ToDo Instructor Guard` | Cannot create a ToDo; may change only `status`, and only on a task allocated to them. |
+| `MBS - Result Correction Guard` | Forces `requested_by` and `status: Open` on creation; must teach the section; the request locks once a reviewer moves it off Open. Stamps `reviewed_by` / `reviewed_on` for reviewers. |
+| `MBS - Staff Feedback Guard` | Staff cannot set their own status or write their own response; stamps `responded_by`. |
+| `MBS - Lesson Plan Guard` | Only for sections they teach, only under their own name; computes `coverage` from the objectives table so the number is never hand-entered. |
+
+### Attendance: submit locks, only the Director reopens
+
+`Instructor` holds `submit` on `Student Attendance` but **not `cancel` or `amend`**, so a submitted register is final for the teacher who took it. A `Director` row was added carrying `cancel` and `amend`; the app surfaces this as a *Reopen* button on submitted rows, visible only to them. Correcting a submitted day is therefore cancel-and-re-enter, which leaves the original in the record as a cancelled document rather than overwriting it.
+
+The same reasoning applies to marks: `Instructor` write and create on `Student Term Subject Result` were **revoked**, making teachers read-only on results. A teacher who spots a wrong score raises a `Result Correction Request`; applying it cancels the submitted row and enters a replacement linked by `amended_from`, which only Education Manager and System Manager can do.
+
+---
+
+## Doctypes added for the app
+
+Created 2026-09-17, module `Education`, all `custom: 1`.
+
+| Doctype | Purpose |
+|---|---|
+| `Result Correction Request` | A teacher's request to change a submitted mark. Fetches student, section, subject, exam and the recorded score straight off the `Student Term Subject Result` it points at, so nothing is retyped. |
+| `Lesson Plan` + `Lesson Plan Objective` | One plan per lesson, with an objectives table carrying an outcome and a carry-forward flag. |
+| `Staff Feedback` | The staff→school channel, mirroring the existing `Student Feedback`. |
+| `Teacher Parent Message Entry` | Child table (`custom_conversation`) that turns the one-message-one-reply doctype into a thread without breaking the three fields the parents' app reads. |
+
 ---
 
 ## Still outstanding
 
-- **`Academics User` has not yet been removed from the 103 linked teachers and 12 duplicate accounts.** Until it is, those accounts remain elevated *and* exempt from every scoping script above, because the scripts treat `Academics User` as elevated. Run `server/migrate_teacher_permissions.py` (`dry_run=True` first).
-- Permission Query scripts not yet written for: `Student Group`, `Course Schedule`, `Student Attendance`, `Student Term Report`, `Student Year Report`, `Student Permission Leave`, `Student Log`, `Student Activity`, `Student Discipline Incident`. Reads on these are currently unscoped for teachers.
-- `Appeal Result.student_group` is NULL on all 136 rows, and `original_max_score` is 0 on all of them.
+- Permission Query scripts not yet written for: `Student Group`, `Course Schedule`, `Student Attendance`, `Student Term Report`, `Student Year Report`, `Student Permission Leave`, `Student Activity`. Reads on these are currently unscoped for teachers.
+- `Appeal Result.student_group` is NULL on all 136 rows, and `original_max_score` is 0 on all of them. The new `Result Correction Request` avoids the same trap by fetching both from the linked result row rather than storing a copy.
+- `Student Incident` and `Student Discipline Incident` both still exist on the site. The app reads and writes **only** `Student Discipline Incident`; nothing has been migrated off the other, and `Instructor` has no permission on it.

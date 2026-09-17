@@ -151,9 +151,20 @@ export async function updateDoc<T = Record<string, unknown>>(
   return res.data;
 }
 
-/** Submit a submittable document (docstatus 0 → 1). */
+/** Submit a submittable document (docstatus 0 → 1). Needs the whole doc, not just its name. */
 export async function submitDoc(doc: Record<string, unknown>): Promise<void> {
   await call("frappe.client.submit", { doc: JSON.stringify(doc) });
+}
+
+/**
+ * Cancel a submitted document (docstatus 1 → 2).
+ *
+ * Frappe has no in-place edit for a submitted record: correcting one means
+ * cancelling it and entering a replacement. Only roles with `cancel` on the
+ * doctype can do this — for `Student Attendance` that is the Director.
+ */
+export async function cancelDoc(doctype: string, name: string): Promise<void> {
+  await postCall("frappe.client.cancel", { doctype, name });
 }
 
 /** GET /api/method/<method>. Returns the `message`. */

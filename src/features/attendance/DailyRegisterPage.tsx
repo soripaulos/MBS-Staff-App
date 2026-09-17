@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, X, CalendarOff, Clock, Info, Stethoscope, FileText, Users } from "lucide-react";
-import { createDoc, getDoc, getList, call, submitDoc } from "@/lib/api";
+import { BarChart3, Check, X, CalendarOff, Clock, Info, Lock, Stethoscope, FileText, Users } from "lucide-react";
+import { cancelDoc, createDoc, getDoc, getList, call, submitDoc } from "@/lib/api";
 import { today, formatTime, dualDate, parseYmd } from "@/lib/dates";
 import { PERMISSION_REASONS, SICK_ACTIONS, SICK_TYPES } from "@/lib/constants";
 import { useSession } from "@/providers/SessionProvider";
@@ -19,10 +19,16 @@ import { cn } from "@/lib/utils";
  * timetable) still exists for subject teachers who need period-by-period
  * attendance, but it is the exception rather than the route everyone uses.
  *
+ * Two-stage save. **Save draft** writes everything at docstatus 0, so a
+ * half-finished register survives a closed tab and stays fully editable —
+ * including the linked Late / Sick / Permission records. **Submit** locks the
+ * day. After that a teacher cannot change or amend it; reopening a submitted
+ * record is the Director's call, and is a cancel-and-re-enter rather than an
+ * edit, because Frappe has no in-place edit for a submitted document.
+ *
  * A day mark writes one `Student Attendance` with a `student_group` and no
  * `course_schedule`, which is how Frappe distinguishes day attendance from
- * lesson attendance. Late / Sick / Permission additionally write the matching
- * record, so the register and the student's history never drift apart.
+ * lesson attendance.
  */
 
 type Mark = "Present" | "Late" | "Absent" | "Leave";
@@ -41,6 +47,12 @@ interface Detail {
   permissionDetail?: string;
 }
 
+interface LinkedRow {
+  name: string;
+  student: string;
+  docstatus?: number;
+}
+
 const MARKS: { key: Mark; label: string; icon: typeof Check; on: string }[] = [
   { key: "Present", label: "Present", icon: Check, on: "border-emerald-600 bg-emerald-600" },
   { key: "Late", label: "Late", icon: Clock, on: "border-amber-500 bg-amber-500" },
@@ -49,6 +61,12 @@ const MARKS: { key: Mark; label: string; icon: typeof Check; on: string }[] = [
 ];
 
 const toStatus = (m: Mark): AttendanceRow["status"] => (m === "Late" ? "Present" : m);
+
+/** Pull the whole draft back so `frappe.client.submit` has every field. */
+async function submitByName(doctype: string, name: string) {
+  const doc = await getDoc<Record<string, unknown>>(doctype, name);
+  await submitDoc({ ...doc, doctype });
+}
 
 export default function DailyRegisterPage() {
   const session = useSession();
@@ -64,6 +82,7 @@ export default function DailyRegisterPage() {
   const [details, setDetails] = useState<Record<string, Detail>>({});
   const [openStudent, setOpenStudent] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const canLog = group ? session.isHomeroomOf(group) || session.isLeadership : false;
 
@@ -78,6 +97,16 @@ export default function DailyRegisterPage() {
       const ids = students.map((s) => s.student);
       const safe = async <T,>(fn: () => Promise<T[]>) => fn().catch(() => [] as T[]);
       const none = Promise.resolve([] as never[]);
+      const linked = <T,>(doctype: string, fields: string[]) =>
+        ids.length
+          ? safe(() =>
+              getList<T>(doctype, {
+                filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]] as never,
+                fields: ["name", "student", "docstatus", ...fields],
+                limit: 400,
+              }),
+            )
+          : none;
 
       const [existing, lates, sicks, permissions] = await Promise.all([
         safe(() =>
@@ -87,33 +116,9 @@ export default function DailyRegisterPage() {
             limit: 400,
           }),
         ),
-        ids.length
-          ? safe(() =>
-              getList<{ student: string; time?: string }>("Student Late Record", {
-                filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]],
-                fields: ["student", "time"],
-                limit: 400,
-              }),
-            )
-          : none,
-        ids.length
-          ? safe(() =>
-              getList<{ student: string; type?: string }>("Student Sick Record", {
-                filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]],
-                fields: ["student", "type"],
-                limit: 400,
-              }),
-            )
-          : none,
-        ids.length
-          ? safe(() =>
-              getList<{ student: string; reason?: string }>("Student Permission Leave", {
-                filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]],
-                fields: ["student", "reason"],
-                limit: 400,
-              }),
-            )
-          : none,
+        linked<LinkedRow & { time?: string }>("Student Late Record", ["time"]),
+        linked<LinkedRow & { type?: string }>("Student Sick Record", ["type"]),
+        linked<LinkedRow & { reason?: string }>("Student Permission Leave", ["reason"]),
       ]);
       return { students, existing, lates, sicks, permissions };
     },
@@ -123,9 +128,7 @@ export default function DailyRegisterPage() {
   // win over lesson rows, since this screen is about the day as a whole.
   useEffect(() => {
     if (!q.data) return;
-    const dayRows = new Map(
-      q.data.existing.filter((e) => !e.course_schedule).map((e) => [e.student, e]),
-    );
+    const dayRows = new Map(q.data.existing.filter((e) => !e.course_schedule).map((e) => [e.student, e]));
     const lateBy = new Map(q.data.lates.map((r) => [r.student, r]));
     const sickBy = new Map(q.data.sicks.map((r) => [r.student, r]));
     const permBy = new Map(q.data.permissions.map((r) => [r.student, r]));
@@ -161,97 +164,140 @@ export default function DailyRegisterPage() {
     () => new Map((q.data?.existing ?? []).filter((e) => !e.course_schedule).map((e) => [e.student, e])),
     [q.data],
   );
-  const alreadyLogged = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of q.data?.lates ?? []) s.add(`late:${r.student}`);
-    for (const r of q.data?.sicks ?? []) s.add(`sick:${r.student}`);
-    for (const r of q.data?.permissions ?? []) s.add(`perm:${r.student}`);
-    return s;
+  const linkedMap = useMemo(() => {
+    const m = new Map<string, LinkedRow>();
+    for (const r of q.data?.lates ?? []) m.set(`late:${r.student}`, r);
+    for (const r of q.data?.sicks ?? []) m.set(`sick:${r.student}`, r);
+    for (const r of q.data?.permissions ?? []) m.set(`perm:${r.student}`, r);
+    return m;
   }, [q.data]);
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const w = { register: 0, events: 0, skipped: 0 };
-      for (const [student, mark] of Object.entries(marks)) {
-        const prior = dayRowMap.get(student);
-        const status = toStatus(mark);
-        if (prior?.status === status) {
-          // unchanged
-        } else if (prior) {
-          if (prior.docstatus === 1) {
-            w.skipped++;
-          } else {
-            await call("frappe.client.set_value", {
-              doctype: "Student Attendance",
-              name: prior.name,
-              fieldname: "status",
-              value: status,
-            });
-            w.register++;
-          }
-        } else {
-          const doc = await createDoc<Record<string, unknown>>("Student Attendance", {
-            student,
-            student_group: group,
-            date,
-            status,
+  const students = q.data?.students ?? [];
+  const submittedCount = students.filter((s) => dayRowMap.get(s.student)?.docstatus === 1).length;
+  const draftCount = students.filter((s) => dayRowMap.get(s.student)?.docstatus === 0).length;
+  const registerState =
+    submittedCount === students.length && students.length > 0
+      ? "submitted"
+      : submittedCount > 0
+        ? "part"
+        : draftCount > 0
+          ? "draft"
+          : "new";
+
+  /**
+   * One pass over the section. `finalize` decides whether each record is left
+   * as a draft or submitted; everything else is identical, so a draft save and
+   * a submit can never diverge in what they write.
+   */
+  const persist = async (finalize: boolean) => {
+    const w = { register: 0, events: 0, locked: 0, refused: 0 };
+    for (const [student, mark] of Object.entries(marks)) {
+      const prior = dayRowMap.get(student);
+      const status = toStatus(mark);
+
+      if (prior?.docstatus === 1) {
+        w.locked++;
+      } else if (prior) {
+        if (prior.status !== status) {
+          await call("frappe.client.set_value", {
+            doctype: "Student Attendance",
+            name: prior.name,
+            fieldname: "status",
+            value: status,
           });
-          await submitDoc(doc).catch(() => undefined);
           w.register++;
         }
-
-        if (!canLog) continue;
-        const d = details[student] ?? {};
-        try {
-          if (mark === "Late" && !alreadyLogged.has(`late:${student}`)) {
-            const doc = await createDoc<Record<string, unknown>>("Student Late Record", {
-              student,
-              date,
-              time: `${d.lateTime || new Date().toTimeString().slice(0, 5)}:00`,
-              reason: d.lateReason || "",
-            });
-            await submitDoc(doc).catch(() => undefined);
-            w.events++;
-          } else if (mark === "Absent" && d.absenceKind === "sick" && !alreadyLogged.has(`sick:${student}`)) {
-            const doc = await createDoc<Record<string, unknown>>("Student Sick Record", {
-              student,
-              date,
-              type: d.sickType || SICK_TYPES[0],
-              details: d.sickDetails || "",
-              action: d.sickAction || SICK_ACTIONS[0],
-              parent_contacted: d.parentContacted ? 1 : 0,
-              leave_early: d.leaveEarly ? 1 : 0,
-            });
-            await submitDoc(doc).catch(() => undefined);
-            w.events++;
-          } else if (mark === "Absent" && d.absenceKind === "permission" && !alreadyLogged.has(`perm:${student}`)) {
-            const doc = await createDoc<Record<string, unknown>>("Student Permission Leave", {
-              student,
-              date,
-              time: `${new Date().toTimeString().slice(0, 5)}:00`,
-              reason: d.permissionReason || PERMISSION_REASONS[0],
-              detail: d.permissionDetail || "",
-            });
-            await submitDoc(doc).catch(() => undefined);
-            w.events++;
-          }
-        } catch {
-          w.skipped++;
-        }
+        if (finalize) await submitByName("Student Attendance", prior.name);
+      } else {
+        const doc = await createDoc<Record<string, unknown>>("Student Attendance", {
+          student,
+          student_group: group,
+          date,
+          status,
+        });
+        if (finalize) await submitDoc(doc).catch(() => undefined);
+        w.register++;
       }
-      return w;
-    },
-    onSuccess: (w) => {
+
+      if (!canLog) continue;
+      const d = details[student] ?? {};
+      const wants =
+        mark === "Late"
+          ? "late"
+          : mark === "Absent" && d.absenceKind === "sick"
+            ? "sick"
+            : mark === "Absent" && d.absenceKind === "permission"
+              ? "perm"
+              : null;
+      if (!wants) continue;
+
+      const existingLink = linkedMap.get(`${wants}:${student}`);
+      const doctype =
+        wants === "late" ? "Student Late Record" : wants === "sick" ? "Student Sick Record" : "Student Permission Leave";
+      try {
+        if (existingLink) {
+          if (finalize && existingLink.docstatus === 0) await submitByName(doctype, existingLink.name);
+          continue;
+        }
+        const payload =
+          wants === "late"
+            ? {
+                student,
+                date,
+                time: `${d.lateTime || new Date().toTimeString().slice(0, 5)}:00`,
+                reason: d.lateReason || "",
+              }
+            : wants === "sick"
+              ? {
+                  student,
+                  date,
+                  type: d.sickType || SICK_TYPES[0],
+                  details: d.sickDetails || "",
+                  action: d.sickAction || SICK_ACTIONS[0],
+                  parent_contacted: d.parentContacted ? 1 : 0,
+                  leave_early: d.leaveEarly ? 1 : 0,
+                }
+              : {
+                  student,
+                  date,
+                  time: `${new Date().toTimeString().slice(0, 5)}:00`,
+                  reason: d.permissionReason || PERMISSION_REASONS[0],
+                  detail: d.permissionDetail || "",
+                };
+        const doc = await createDoc<Record<string, unknown>>(doctype, payload);
+        if (finalize) await submitDoc(doc).catch(() => undefined);
+        w.events++;
+      } catch {
+        w.refused++;
+      }
+    }
+    return w;
+  };
+
+  const save = useMutation({
+    mutationFn: ({ finalize }: { finalize: boolean }) => persist(finalize),
+    onSuccess: (w, { finalize }) => {
+      setConfirmSubmit(false);
       setDone(
-        `Saved — ${w.register} attendance record${w.register === 1 ? "" : "s"}` +
+        (finalize ? "Register submitted" : "Draft saved") +
+          ` — ${w.register} attendance record${w.register === 1 ? "" : "s"}` +
           (w.events ? `, ${w.events} linked record${w.events === 1 ? "" : "s"}` : "") +
-          (w.skipped ? `. ${w.skipped} locked or not permitted.` : "."),
+          (w.locked ? `. ${w.locked} already submitted and left untouched.` : ".") +
+          (w.refused ? ` ${w.refused} were refused.` : ""),
       );
       void qc.invalidateQueries({ queryKey: ["daily-register"] });
     },
   });
 
-  const students = q.data?.students ?? [];
+  /** Director-only: cancel a submitted row so the day can be entered again. */
+  const reopen = useMutation({
+    mutationFn: async (name: string) => cancelDoc("Student Attendance", name),
+    onSuccess: () => {
+      setDone("Record reopened — mark the student again and submit.");
+      void qc.invalidateQueries({ queryKey: ["daily-register"] });
+    },
+  });
+
   const counts: Record<Mark, number> = { Present: 0, Late: 0, Absent: 0, Leave: 0 };
   for (const s of students) counts[marks[s.student] ?? "Present"]++;
 
@@ -260,8 +306,21 @@ export default function DailyRegisterPage() {
     setDetails((prev) => ({ ...prev, [student]: { ...prev[student], ...patch } }));
 
   return (
-    <div className="pb-28 md:pb-6">
-      <PageTitle title="Daily register" subtitle={dualDate(parseYmd(date))} />
+    <div className="pb-32 md:pb-6">
+      <PageTitle
+        title="Daily register"
+        subtitle={dualDate(parseYmd(date))}
+        actions={
+          group ? (
+            <Link
+              to={`/attendance/insight?group=${encodeURIComponent(group)}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <BarChart3 size={16} /> <span className="hidden sm:inline">Insight</span>
+            </Link>
+          ) : undefined
+        }
+      />
 
       <div className="mb-3 grid gap-2 sm:grid-cols-2">
         <div>
@@ -304,9 +363,22 @@ export default function DailyRegisterPage() {
             {counts.Late > 0 && <Badge tone="amber">{counts.Late} late</Badge>}
             {counts.Absent > 0 && <Badge tone="red">{counts.Absent} absent</Badge>}
             {counts.Leave > 0 && <Badge tone="blue">{counts.Leave} leave</Badge>}
+            {registerState === "submitted" && <Badge tone="brand">Submitted</Badge>}
+            {registerState === "part" && <Badge tone="brand">{submittedCount} submitted</Badge>}
+            {registerState === "draft" && <Badge tone="amber">Draft</Badge>}
             <button
-              className="ml-auto rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-900/40"
-              onClick={() => setMarks(Object.fromEntries(students.map((s) => [s.student, "Present" as Mark])))}
+              className="ml-auto rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-40 dark:text-brand-300 dark:hover:bg-brand-900/40"
+              disabled={registerState === "submitted"}
+              onClick={() =>
+                setMarks((m) =>
+                  Object.fromEntries(
+                    students.map((s) => [
+                      s.student,
+                      dayRowMap.get(s.student)?.docstatus === 1 ? (m[s.student] ?? "Present") : ("Present" as Mark),
+                    ]),
+                  ),
+                )
+              }
             >
               All present
             </button>
@@ -326,7 +398,8 @@ export default function DailyRegisterPage() {
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {students.map((s) => {
                 const mark = marks[s.student] ?? "Present";
-                const locked = dayRowMap.get(s.student)?.docstatus === 1;
+                const row = dayRowMap.get(s.student);
+                const locked = row?.docstatus === 1;
                 const d = details[s.student] ?? {};
                 const tag =
                   mark === "Late"
@@ -343,15 +416,27 @@ export default function DailyRegisterPage() {
                 return (
                   <li key={s.student} className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span className="w-6 shrink-0 text-xs tabular-nums text-slate-400">
-                        {s.group_roll_number ?? ""}
-                      </span>
+                      <span className="w-6 shrink-0 text-xs tabular-nums text-slate-400">{s.group_roll_number ?? ""}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{s.student_name}</p>
                         {tag && <p className="truncate text-[11px] text-slate-500">{tag}</p>}
-                        {locked && <p className="text-[10px] uppercase tracking-wide text-slate-400">saved</p>}
+                        {locked && (
+                          <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-400">
+                            <Lock size={10} /> submitted
+                          </p>
+                        )}
+                        {!locked && row && <p className="text-[10px] uppercase tracking-wide text-amber-600">draft</p>}
                       </div>
-                      {canLog && (mark === "Late" || mark === "Absent") && (
+                      {locked && session.isDirector && (
+                        <button
+                          onClick={() => reopen.mutate(row!.name)}
+                          disabled={reopen.isPending}
+                          className="rounded-lg border border-amber-400 px-2 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                        >
+                          Reopen
+                        </button>
+                      )}
+                      {!locked && canLog && (mark === "Late" || mark === "Absent") && (
                         <button
                           onClick={() => setOpenStudent(s.student)}
                           className="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
@@ -396,15 +481,51 @@ export default function DailyRegisterPage() {
             </ul>
           </Card>
 
-          <div className="fixed inset-x-0 bottom-16 z-30 px-4 md:static md:mt-4 md:px-0">
-            <Button className="w-full shadow-lg" disabled={save.isPending} onClick={() => save.mutate()}>
-              {save.isPending ? "Saving…" : `Save register (${students.length} students)`}
-            </Button>
-            {done && <p className="mt-2 text-center text-sm text-emerald-600">{done}</p>}
-            {save.isError && <p className="mt-2 text-center text-sm text-red-600">{(save.error as Error).message}</p>}
+          <div className="fixed inset-x-0 bottom-16 z-30 space-y-2 bg-gradient-to-t from-white via-white px-4 pb-2 pt-3 dark:from-slate-950 dark:via-slate-950 md:static md:mt-4 md:bg-none md:px-0 md:dark:bg-none">
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                disabled={save.isPending || registerState === "submitted"}
+                onClick={() => save.mutate({ finalize: false })}
+              >
+                {save.isPending ? "Saving…" : "Save draft"}
+              </Button>
+              <Button
+                className="flex-1 shadow-lg"
+                disabled={save.isPending || registerState === "submitted"}
+                onClick={() => setConfirmSubmit(true)}
+              >
+                {registerState === "submitted" ? "Submitted" : "Submit register"}
+              </Button>
+            </div>
+            {done && <p className="text-center text-sm text-emerald-600">{done}</p>}
+            {save.isError && <p className="text-center text-sm text-red-600">{(save.error as Error).message}</p>}
+            {reopen.isError && <p className="text-center text-sm text-red-600">{(reopen.error as Error).message}</p>}
           </div>
         </>
       )}
+
+      <Modal open={confirmSubmit} onClose={() => setConfirmSubmit(false)} title="Submit the register?">
+        <div className="space-y-3 text-sm">
+          <p>
+            Submitting locks today's attendance for <b>{groups.find((g) => g.name === group)?.student_group_name ?? group}</b>.
+            You will not be able to change or amend it afterwards.
+          </p>
+          <p className="text-xs text-slate-500">
+            If something turns out to be wrong later, ask the Director to reopen the record. Save a draft instead if
+            you are still waiting on anyone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmSubmit(false)}>
+              Keep editing
+            </Button>
+            <Button disabled={save.isPending} onClick={() => save.mutate({ finalize: true })}>
+              {save.isPending ? "Submitting…" : "Submit"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!openDetail} onClose={() => setOpenStudent(null)} title={openDetail?.student_name ?? ""}>
         {openDetail && (
@@ -433,11 +554,13 @@ export default function DailyRegisterPage() {
                 <div>
                   <Label>Why is this student absent?</Label>
                   <div className="grid grid-cols-3 gap-2">
-                    {([
-                      ["unexcused", "Unexcused", FileText],
-                      ["sick", "Sick", Stethoscope],
-                      ["permission", "Permission", CalendarOff],
-                    ] as const).map(([kind, label, Icon]) => (
+                    {(
+                      [
+                        ["unexcused", "Unexcused", FileText],
+                        ["sick", "Sick", Stethoscope],
+                        ["permission", "Permission", CalendarOff],
+                      ] as const
+                    ).map(([kind, label, Icon]) => (
                       <button
                         key={kind}
                         onClick={() => setDetail(openDetail.student, { absenceKind: kind })}

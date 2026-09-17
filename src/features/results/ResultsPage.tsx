@@ -1,17 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, GraduationCap } from "lucide-react";
 import { useSession } from "@/providers/SessionProvider";
 import { useAcademic } from "@/providers/AcademicProvider";
-import { getList, updateDoc, fileUrl } from "@/lib/api";
+import { cancelDoc, createDoc, getDoc, getList, submitDoc, updateDoc, fileUrl } from "@/lib/api";
 import { EXAMS } from "@/lib/constants";
 import { bandClass, letterGrade } from "@/lib/grades";
 import { cn, downloadCsv, round1 } from "@/lib/utils";
 import { formatDate } from "@/lib/dates";
-import type { AppealRow, SubjectResultRow, TermReportRow, YearReportRow } from "@/lib/types";
+import type { AppealRow, ResultCorrectionRow, SubjectResultRow, TermReportRow, YearReportRow } from "@/lib/types";
 import { useGroupSubjects, useMyGroups } from "@/features/shared/useGroups";
-import { Badge, Button, Card, EmptyState, ErrorState, Label, ListSkeleton, Modal, PageTitle, Select, Tabs, Textarea, statusTone } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Input, Label, ListSkeleton, Modal, PageTitle, Select, Tabs, Textarea, statusTone } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
 /* data                                                                */
@@ -30,10 +30,16 @@ function useGroupResults(group: string | null, term: string | null) {
   });
 }
 
+interface Cell {
+  name: string;
+  score: number;
+  max: number;
+}
+
 interface StudentPivot {
   student: string;
   student_name: string;
-  byExam: Record<string, { score: number; max: number }>;
+  byExam: Record<string, Cell>;
   total: number;
   totalMax: number;
 }
@@ -47,7 +53,7 @@ function pivotBySubject(rows: SubjectResultRow[], subject: string): StudentPivot
       p = { student: r.student, student_name: r.student_name, byExam: {}, total: 0, totalMax: 0 };
       map.set(r.student, p);
     }
-    p.byExam[r.exam] = { score: r.score, max: r.max_score };
+    p.byExam[r.exam] = { name: r.name, score: r.score, max: r.max_score };
     p.total += r.score;
     p.totalMax += r.max_score;
   }
@@ -58,8 +64,123 @@ function pivotBySubject(rows: SubjectResultRow[], subject: string): StudentPivot
 /* marks grid                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Ask for a recorded mark to be changed.
+ *
+ * Teachers cannot edit `Student Term Subject Result` — every row is submitted,
+ * and the school wants one pair of hands on the marks. So a teacher who spots
+ * a wrong score raises this instead, and whoever entered the results decides.
+ * It behaves like the parents' grade appeal, from the other direction.
+ */
+function CorrectionModal({
+  cell,
+  studentName,
+  subject,
+  exam,
+  onClose,
+}: {
+  cell: Cell | null;
+  studentName: string;
+  subject: string;
+  exam: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [score, setScore] = useState("");
+  const [max, setMax] = useState("");
+  const [type, setType] = useState("Score entered incorrectly");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (!cell) return;
+    setScore(String(cell.score));
+    setMax(String(cell.max));
+    setType("Score entered incorrectly");
+    setReason("");
+  }, [cell]);
+
+  const m = useMutation({
+    mutationFn: () =>
+      createDoc("Result Correction Request", {
+        student_term_subject_result: cell!.name,
+        correction_type: type,
+        corrected_score: Number(score),
+        corrected_max_score: Number(max) || cell!.max,
+        reason,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["corrections"] });
+      onClose();
+    },
+  });
+
+  const unchanged = cell && Number(score) === cell.score && Number(max) === cell.max;
+
+  return (
+    <Modal open={!!cell} onClose={onClose} title="Request a correction">
+      {cell && (
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            m.mutate();
+          }}
+        >
+          <div>
+            <p className="text-sm font-semibold">{studentName}</p>
+            <p className="text-xs text-slate-500">
+              {subject} — {exam} · recorded{" "}
+              <b>
+                {cell.score}/{cell.max}
+              </b>
+            </p>
+          </div>
+          <div>
+            <Label>What is wrong</Label>
+            <Select value={type} onChange={(e) => setType(e.target.value)}>
+              {["Score entered incorrectly", "Mark missing", "Wrong exam", "Wrong student", "Marking error", "Other"].map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Correct score</Label>
+              <Input type="number" step="0.5" min="0" value={score} onChange={(e) => setScore(e.target.value)} required />
+            </div>
+            <div>
+              <Label>Out of</Label>
+              <Input type="number" step="0.5" min="0" value={max} onChange={(e) => setMax(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Why</Label>
+            <Textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="What you checked against — the script, your mark book, the original entry…"
+              required
+            />
+          </div>
+          <p className="text-xs text-slate-400">
+            This goes to whoever entered the results. The mark stays as it is until they accept and make the change.
+          </p>
+          <Button type="submit" className="w-full" disabled={m.isPending || !reason.trim() || !!unchanged}>
+            {m.isPending ? "Sending…" : unchanged ? "Change a value first" : "Send request"}
+          </Button>
+          {m.isError && <p className="text-xs text-red-600">{(m.error as Error).message}</p>}
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function MarksGrid({ rows, subject, group }: { rows: SubjectResultRow[]; subject: string; group: string }) {
+  const session = useSession();
   const pivots = useMemo(() => pivotBySubject(rows, subject), [rows, subject]);
+  const [correcting, setCorrecting] = useState<{ cell: Cell; student: string; name: string; exam: string } | null>(null);
+  const canRequest = session.isTeacher || session.isLeadership;
   const exams = useMemo(() => {
     const present = new Set(rows.filter((r) => r.subject === subject).map((r) => r.exam));
     const ordered = EXAMS.filter((e) => present.has(e));
@@ -87,11 +208,14 @@ function MarksGrid({ rows, subject, group }: { rows: SubjectResultRow[]; subject
 
   return (
     <Card className="p-0">
-      <div className="flex items-center justify-between px-4 py-3">
-        <p className="text-sm font-semibold">
-          {subject} · {pivots.length} students
-        </p>
-        <Button variant="secondary" onClick={exportCsv} className="min-h-0 px-3 py-1.5 text-xs">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">
+            {subject} · {pivots.length} students
+          </p>
+          {canRequest && <p className="text-xs text-slate-400">Tap a score to ask for it to be corrected.</p>}
+        </div>
+        <Button variant="secondary" onClick={exportCsv} className="min-h-0 shrink-0 px-3 py-1.5 text-xs">
           <Download size={14} /> CSV
         </Button>
       </div>
@@ -120,11 +244,26 @@ function MarksGrid({ rows, subject, group }: { rows: SubjectResultRow[]; subject
                       {p.student_name}
                     </Link>
                   </td>
-                  {exams.map((e) => (
-                    <td key={e} className="px-3 py-2 text-right tabular-nums">
-                      {p.byExam[e] ? p.byExam[e].score : <span className="text-slate-300 dark:text-slate-600">—</span>}
-                    </td>
-                  ))}
+                  {exams.map((e) => {
+                    const cell = p.byExam[e];
+                    return (
+                      <td key={e} className="px-3 py-2 text-right tabular-nums">
+                        {!cell ? (
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                        ) : canRequest ? (
+                          <button
+                            onClick={() => setCorrecting({ cell, student: p.student, name: p.student_name, exam: e })}
+                            className="rounded px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-900/40 dark:hover:text-brand-200"
+                            title="Request a correction"
+                          >
+                            {cell.score}
+                          </button>
+                        ) : (
+                          cell.score
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right font-medium tabular-nums">
                     {round1(p.total)}
                     <span className="text-xs text-slate-400">/{round1(p.totalMax)}</span>
@@ -137,6 +276,13 @@ function MarksGrid({ rows, subject, group }: { rows: SubjectResultRow[]; subject
           </tbody>
         </table>
       </div>
+      <CorrectionModal
+        cell={correcting?.cell ?? null}
+        studentName={correcting?.name ?? ""}
+        subject={subject}
+        exam={correcting?.exam ?? ""}
+        onClose={() => setCorrecting(null)}
+      />
     </Card>
   );
 }
@@ -417,6 +563,227 @@ function Appeals({ term }: { term: string | null }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* corrections                                                         */
+/* ------------------------------------------------------------------ */
+
+const CORRECTION_FIELDS = [
+  "name", "student_term_subject_result", "student", "student_name", "student_group", "subject",
+  "exam", "semester", "original_score", "original_max_score", "correction_type", "corrected_score",
+  "corrected_max_score", "reason", "requested_by", "requested_on", "status", "reviewed_by",
+  "reviewed_on", "resolution",
+];
+
+/**
+ * Accepting a correction means replacing a submitted result, and Frappe has no
+ * in-place edit for one: the old row is cancelled and a fresh row is created
+ * against it with `amended_from`, so the change is auditable rather than silent.
+ * Only Education Managers and System Managers hold cancel and amend on
+ * `Student Term Subject Result`, which is why the button only appears for them.
+ */
+function Corrections({ term }: { term: string | null }) {
+  const session = useSession();
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<ResultCorrectionRow | null>(null);
+  const [resolution, setResolution] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Open");
+
+  const q = useQuery({
+    queryKey: ["corrections", term, statusFilter],
+    queryFn: () =>
+      getList<ResultCorrectionRow>("Result Correction Request", {
+        filters: [
+          ...(term ? [["semester", "=", term]] : []),
+          ...(statusFilter !== "All" ? [["status", "=", statusFilter]] : []),
+        ] as never,
+        fields: CORRECTION_FIELDS,
+        orderBy: "creation desc",
+        limit: 200,
+      }),
+  });
+
+  const decide = useMutation({
+    mutationFn: ({ name, status }: { name: string; status: string }) =>
+      updateDoc("Result Correction Request", name, { status, resolution }),
+    onSuccess: () => {
+      setSelected(null);
+      setResolution("");
+      void qc.invalidateQueries({ queryKey: ["corrections"] });
+    },
+  });
+
+  const apply = useMutation({
+    mutationFn: async (req: ResultCorrectionRow) => {
+      const old = await getDoc<Record<string, unknown>>("Student Term Subject Result", req.student_term_subject_result);
+      await cancelDoc("Student Term Subject Result", String(old.name));
+      const {
+        name: _n, owner: _o, creation: _c, modified: _m, modified_by: _mb, idx: _i, docstatus: _d, ...rest
+      } = old;
+      const fresh = await createDoc<Record<string, unknown>>("Student Term Subject Result", {
+        ...rest,
+        amended_from: old.name,
+        score: req.corrected_score,
+        max_score: req.corrected_max_score || req.original_max_score,
+      });
+      await submitDoc(fresh);
+      await updateDoc("Result Correction Request", req.name, {
+        status: "Applied",
+        resolution: resolution || `Applied — score changed to ${req.corrected_score}.`,
+      });
+    },
+    onSuccess: () => {
+      setSelected(null);
+      setResolution("");
+      void qc.invalidateQueries({ queryKey: ["corrections"] });
+      void qc.invalidateQueries({ queryKey: ["stsr"] });
+    },
+  });
+
+  const mine = !session.isAdmin;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Select className="max-w-40" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status filter">
+          {["Open", "In Review", "Applied", "Rejected", "All"].map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </Select>
+        <p className="text-xs text-slate-500">
+          {mine ? "Corrections you asked for" : "Corrections raised by teachers"}
+        </p>
+      </div>
+      {q.isLoading ? (
+        <ListSkeleton rows={4} />
+      ) : q.isError ? (
+        <ErrorState error={q.error} retry={() => q.refetch()} />
+      ) : !q.data?.length ? (
+        <EmptyState
+          title="No correction requests"
+          hint={mine ? "Tap a score in the marks grid to ask for it to be corrected." : "Requests raised by teachers appear here."}
+        />
+      ) : (
+        <div className="space-y-2">
+          {q.data.map((c) => (
+            <button
+              key={c.name}
+              onClick={() => {
+                setSelected(c);
+                setResolution(c.resolution ?? "");
+              }}
+              className="w-full text-left"
+            >
+              <Card className="flex items-center gap-3 transition-shadow hover:shadow-md">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">
+                    {c.student_name} · {c.subject} — {c.exam}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {c.original_score} → <b>{c.corrected_score}</b> / {c.corrected_max_score || c.original_max_score} ·{" "}
+                    {formatDate(c.requested_on)}
+                  </p>
+                </div>
+                <Badge tone={c.status === "Applied" ? "green" : statusTone(c.status)}>{c.status}</Badge>
+              </Card>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Result correction">
+        {selected && (
+          <div className="space-y-3 text-sm">
+            <p className="font-semibold">
+              {selected.student_name} · {selected.subject} — {selected.exam}
+            </p>
+            <p className="text-xs text-slate-500">
+              {selected.student_group} · {selected.semester}
+            </p>
+            <div className="flex items-center justify-center gap-4 rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+              <div className="text-center">
+                <p className="text-xs uppercase text-slate-400">Recorded</p>
+                <p className="text-lg font-bold">
+                  {selected.original_score}
+                  <span className="text-xs text-slate-400">/{selected.original_max_score}</span>
+                </p>
+              </div>
+              <span className="text-slate-400">→</span>
+              <div className="text-center">
+                <p className="text-xs uppercase text-slate-400">Requested</p>
+                <p className="text-lg font-bold text-brand-600 dark:text-brand-300">
+                  {selected.corrected_score}
+                  <span className="text-xs text-slate-400">/{selected.corrected_max_score || selected.original_max_score}</span>
+                </p>
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+              <p className="text-xs font-medium uppercase text-slate-400">{selected.correction_type}</p>
+              <p className="mt-1 whitespace-pre-wrap">{selected.reason || "—"}</p>
+              <p className="mt-2 text-[11px] text-slate-400">Raised by {selected.requested_by}</p>
+            </div>
+            {selected.status !== "Open" && selected.resolution && !session.isAdmin && (
+              <div className="rounded-lg bg-brand-50 p-3 dark:bg-brand-900/30">
+                <p className="text-xs font-medium uppercase text-brand-600 dark:text-brand-300">Reply</p>
+                <p className="mt-1 whitespace-pre-wrap">{selected.resolution}</p>
+              </div>
+            )}
+
+            {session.isAdmin ? (
+              <>
+                <div>
+                  <Label>Resolution note</Label>
+                  <Textarea
+                    rows={2}
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value)}
+                    placeholder="What was checked and decided…"
+                  />
+                </div>
+                {selected.status !== "Applied" && (
+                  <p className="text-xs text-slate-400">
+                    Applying cancels the recorded result and enters a replacement linked to it, then submits the new
+                    row. The old score stays in the record as a cancelled document.
+                  </p>
+                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={decide.isPending || apply.isPending}
+                    onClick={() => decide.mutate({ name: selected.name, status: "In Review" })}
+                  >
+                    Mark in review
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={decide.isPending || apply.isPending}
+                    onClick={() => decide.mutate({ name: selected.name, status: "Rejected" })}
+                  >
+                    Reject
+                  </Button>
+                  {selected.status !== "Applied" && (
+                    <Button disabled={decide.isPending || apply.isPending} onClick={() => apply.mutate(selected)}>
+                      {apply.isPending ? "Applying…" : "Apply correction"}
+                    </Button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">
+                {selected.status === "Open"
+                  ? "Waiting on the results team. You can still edit this request from the desk until they pick it up."
+                  : "This request has been picked up — it can no longer be changed."}
+              </p>
+            )}
+            {(decide.isError || apply.isError) && (
+              <p className="text-xs text-red-600">{((decide.error ?? apply.error) as Error).message}</p>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -443,11 +810,13 @@ export default function ResultsPage() {
   const tab = requestedTab === "appeals" && !canReviewAppeals ? "grid" : requestedTab;
   const setTab = (t: string) => setParams({ ...(effectiveGroup ? { group: effectiveGroup } : {}), tab: t }, { replace: true });
 
-  const results = useGroupResults(tab !== "appeals" ? effectiveGroup : null, term);
+  const isListTab = tab === "appeals" || tab === "corrections";
+  const results = useGroupResults(isListTab ? null : effectiveGroup, term);
 
   const tabs = [
     { key: "grid", label: "Marks grid" },
     ...(canSeeWholeSection ? [{ key: "overview", label: "Section overview" }, { key: "year", label: "Year" }] : []),
+    { key: "corrections", label: "Corrections" },
     ...(canReviewAppeals ? [{ key: "appeals", label: "Appeals" }] : []),
   ];
 
@@ -458,7 +827,7 @@ export default function ResultsPage() {
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
       </div>
 
-      {tab !== "appeals" && (
+      {!isListTab && (
         <div className="mb-4 flex flex-wrap gap-2">
           <Select
             className="max-w-56"
@@ -487,6 +856,8 @@ export default function ResultsPage() {
 
       {tab === "appeals" ? (
         <Appeals term={term} />
+      ) : tab === "corrections" ? (
+        <Corrections term={term} />
       ) : groupsLoading || results.isLoading ? (
         <ListSkeleton rows={6} />
       ) : results.isError ? (

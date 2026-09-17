@@ -91,3 +91,16 @@ export function formatTime(t?: string | null): string {
 export function today(): string {
   return ymd(new Date());
 }
+
+/** "YYYY-MM-DD HH:mm:ss" — the shape Frappe stores Datetime fields in. */
+export function nowDatetime(): string {
+  return `${ymd(new Date())} ${new Date().toTimeString().slice(0, 8)}`;
+}
+
+/** "Mon 3 Nov, 2:15 PM" for a stored Datetime; falls back to a bare date. */
+export function formatDateTime(s?: string | null): string {
+  if (!s) return "";
+  const [d, t] = s.split(" ");
+  const date = formatDate(d).replace(/,\s*\d{4}$/, "");
+  return t ? `${date}, ${formatTime(t)}` : date;
+}

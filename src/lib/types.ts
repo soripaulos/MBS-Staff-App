@@ -132,6 +132,7 @@ export interface TeacherParentMessageRow {
   parent_response_date?: string | null;
   teacher_followup?: string | null;
   teacher_followup_date?: string | null;
+  custom_conversation?: MessageEntry[];
 }
 
 export interface AppealRow {
@@ -150,6 +151,131 @@ export interface AppealRow {
   status: "Open" | "In Review" | "Resolved" | "Rejected";
   resolution?: string | null;
   creation?: string;
+}
+
+/** Teacher-raised request to change a submitted `Student Term Subject Result`. */
+export interface ResultCorrectionRow {
+  name: string;
+  student_term_subject_result: string;
+  student: string;
+  student_name?: string;
+  student_group?: string;
+  subject?: string;
+  exam?: string;
+  semester?: string;
+  academic_year?: string;
+  original_score?: number;
+  original_max_score?: number;
+  correction_type?: string;
+  corrected_score?: number;
+  corrected_max_score?: number;
+  reason?: string;
+  attachment?: string | null;
+  requested_by?: string;
+  requested_on?: string;
+  status: "Open" | "In Review" | "Applied" | "Rejected";
+  reviewed_by?: string | null;
+  reviewed_on?: string | null;
+  resolution?: string | null;
+}
+
+export interface DisciplineIncidentRow {
+  name: string;
+  student: string;
+  incident_date?: string;
+  status: "Open" | "Closed";
+  incident_type?: string;
+  severity?: string;
+  description?: string | null;
+  reported_by?: string | null;
+  parent_response?: string | null;
+  resolution?: string | null;
+  supporting_image?: string | null;
+}
+
+export interface StudentLeaveRow {
+  name: string;
+  student: string;
+  student_name?: string;
+  student_group?: string | null;
+  from_date: string;
+  to_date: string;
+  total_leave_days?: number;
+  reason?: string;
+  mark_as_present?: 0 | 1;
+  custom_status?: "Pending" | "Approved" | "Rejected" | null;
+  custom_supporting_document?: string | null;
+  docstatus?: number;
+}
+
+export interface LessonPlanObjective {
+  name?: string;
+  idx?: number;
+  objective: string;
+  outcome: "Not started" | "Partially achieved" | "Achieved";
+  carry_forward?: 0 | 1;
+  notes?: string | null;
+}
+
+export interface LessonPlanRow {
+  name: string;
+  title: string;
+  course: string;
+  student_group: string;
+  instructor?: string | null;
+  plan_date: string;
+  course_schedule?: string | null;
+  academic_year?: string | null;
+  status: "Planned" | "Taught" | "Partially taught" | "Not taught" | "Carried forward";
+  unit?: string | null;
+  topic?: string | null;
+  objectives?: LessonPlanObjective[];
+  teaching_method?: string | null;
+  activities?: string | null;
+  materials?: string | null;
+  assessment?: string | null;
+  homework?: string | null;
+  coverage?: number;
+  reflection?: string | null;
+  carried_from?: string | null;
+  carried_to?: string | null;
+}
+
+export interface TodoRow {
+  name: string;
+  status: "Open" | "Closed" | "Cancelled";
+  priority?: "Low" | "Medium" | "High";
+  date?: string | null;
+  allocated_to?: string | null;
+  description?: string | null;
+  reference_type?: string | null;
+  reference_name?: string | null;
+  assigned_by?: string | null;
+  assigned_by_full_name?: string | null;
+}
+
+export interface StaffFeedbackRow {
+  name: string;
+  subject: string;
+  category: string;
+  status: "Open" | "In Review" | "Resolved" | "Closed";
+  details?: string;
+  raised_by?: string;
+  raised_on?: string;
+  response?: string | null;
+  responded_by?: string | null;
+}
+
+/** One turn in a `Teacher Parent Message` conversation. */
+export interface MessageEntry {
+  name?: string;
+  idx?: number;
+  sender_type: "Teacher" | "Parent";
+  sender?: string | null;
+  sender_name?: string | null;
+  sent_on?: string | null;
+  content: string;
+  seen?: 0 | 1;
 }
 
 export interface LeaveApplicationRow {

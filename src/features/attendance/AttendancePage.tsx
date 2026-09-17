@@ -1,14 +1,15 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Plus } from "lucide-react";
-import { createDoc, getList, submitDoc } from "@/lib/api";
+import { BarChart3, Info, Plus } from "lucide-react";
+import { createDoc, fileUrl, getList, submitDoc, updateDoc } from "@/lib/api";
 import { formatDate, formatTime, today, ymd, addDays } from "@/lib/dates";
 import { PERMISSION_REASONS, SICK_ACTIONS, SICK_TYPES } from "@/lib/constants";
 import { useAcademic } from "@/providers/AcademicProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useGroupStudents, useMyGroups } from "@/features/shared/useGroups";
 import { useStudentNames } from "@/features/shared/useStudentNames";
+import type { StudentLeaveRow } from "@/lib/types";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Label, ListSkeleton, Modal, PageTitle, Select, Tabs, Textarea, statusTone } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -311,49 +312,140 @@ function PermissionForm({ onDone }: { onDone: () => void }) {
 /* student leave applications tab                                      */
 /* ------------------------------------------------------------------ */
 
-interface StudentLeaveRow {
-  name: string;
-  student: string;
-  student_name?: string;
-  from_date: string;
-  to_date: string;
-  total_leave_days?: number;
-  reason?: string;
-  custom_status?: string;
-  docstatus?: number;
-}
-
+/**
+ * Leave requests come from parents in the student app. The homeroom teacher of
+ * the child's section decides them — the server enforces that, and also that
+ * approving is the *only* thing a teacher may change on the request, so the
+ * contents a parent submitted cannot be edited after the fact.
+ */
 function StudentLeaveTab() {
   const { term } = useAcademic();
+  const session = useSession();
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<StudentLeaveRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState("Pending");
+
   const q = useQuery({
-    queryKey: ["student-leave", term],
+    queryKey: ["student-leave", term, statusFilter],
     queryFn: () =>
       getList<StudentLeaveRow>("Student Leave Application", {
-        fields: ["name", "student", "student_name", "from_date", "to_date", "total_leave_days", "reason", "custom_status", "docstatus"],
+        filters: (statusFilter === "All" ? [] : [["custom_status", "=", statusFilter]]) as never,
+        fields: [
+          "name", "student", "student_name", "student_group", "from_date", "to_date",
+          "total_leave_days", "reason", "custom_status", "custom_supporting_document", "docstatus",
+        ],
         orderBy: "from_date desc",
         limit: 200,
       }),
   });
-  if (q.isLoading) return <ListSkeleton rows={5} />;
-  if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
-  if (!q.data?.length) return <EmptyState title="No leave applications" hint="Student leave applications submitted from the student app appear here." />;
+
+  const decide = useMutation({
+    mutationFn: ({ name, status }: { name: string; status: "Approved" | "Rejected" }) =>
+      updateDoc("Student Leave Application", name, { custom_status: status }),
+    onSuccess: () => {
+      setSelected(null);
+      void qc.invalidateQueries({ queryKey: ["student-leave"] });
+    },
+  });
+
+  const canDecide = (r: StudentLeaveRow) => session.isLeadership || session.isHomeroomOf(r.student_group);
+
   return (
-    <div className="space-y-2">
-      {q.data.map((r) => (
-        <Card key={r.name} className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <Link to={`/students/${encodeURIComponent(r.student)}`} className="truncate text-sm font-semibold hover:text-brand-600">
-              {r.student_name ?? r.student}
-            </Link>
-            <p className="truncate text-xs text-slate-500">
-              {formatDate(r.from_date)} → {formatDate(r.to_date)} ({r.total_leave_days ?? "?"} days) · {r.reason ?? ""}
-            </p>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Select className="max-w-40" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status filter">
+          {["Pending", "Approved", "Rejected", "All"].map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </Select>
+        <p className="text-xs text-slate-500">Requests from parents for students in your sections</p>
+      </div>
+      {q.isLoading ? (
+        <ListSkeleton rows={5} />
+      ) : q.isError ? (
+        <ErrorState error={q.error} retry={() => q.refetch()} />
+      ) : !q.data?.length ? (
+        <EmptyState
+          title={statusFilter === "Pending" ? "Nothing waiting on you" : "No leave applications"}
+          hint="Student leave applications submitted from the student app appear here."
+        />
+      ) : (
+        <div className="space-y-2">
+          {q.data.map((r) => {
+            const status = r.custom_status ?? "Pending";
+            return (
+              <button key={r.name} className="w-full text-left" onClick={() => setSelected(r)}>
+                <Card className="flex items-center gap-3 transition-shadow hover:shadow-md">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{r.student_name ?? r.student}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {formatDate(r.from_date)} → {formatDate(r.to_date)} ({r.total_leave_days ?? "?"} days)
+                      {r.reason ? ` · ${r.reason}` : ""}
+                    </p>
+                  </div>
+                  {status === "Pending" && canDecide(r) && <Badge tone="brand">Needs you</Badge>}
+                  <Badge tone={statusTone(status)}>{status}</Badge>
+                </Card>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Leave request">
+        {selected && (
+          <div className="space-y-3 text-sm">
+            <div>
+              <Link to={`/students/${encodeURIComponent(selected.student)}`} className="font-semibold hover:text-brand-600">
+                {selected.student_name ?? selected.student}
+              </Link>
+              <p className="text-xs text-slate-500">
+                {selected.student_group ?? ""} · {formatDate(selected.from_date)} → {formatDate(selected.to_date)} (
+                {selected.total_leave_days ?? "?"} days)
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+              <p className="text-xs font-medium uppercase text-slate-400">Reason given</p>
+              <p className="mt-1 whitespace-pre-wrap">{selected.reason || "—"}</p>
+            </div>
+            {selected.custom_supporting_document && (
+              <a
+                href={fileUrl(selected.custom_supporting_document)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-sm font-medium text-brand-600 dark:text-brand-300"
+              >
+                Open supporting document →
+              </a>
+            )}
+            {canDecide(selected) ? (
+              <>
+                <p className="text-xs text-slate-400">
+                  Approving marks the days as leave rather than absence in the register. You cannot change what the
+                  parent wrote — only the decision.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="danger"
+                    disabled={decide.isPending}
+                    onClick={() => decide.mutate({ name: selected.name, status: "Rejected" })}
+                  >
+                    Reject
+                  </Button>
+                  <Button disabled={decide.isPending} onClick={() => decide.mutate({ name: selected.name, status: "Approved" })}>
+                    {decide.isPending ? "Saving…" : "Approve"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Only the homeroom teacher of this student's section can approve or reject this request.
+              </p>
+            )}
+            {decide.isError && <p className="text-xs text-red-600">{(decide.error as Error).message}</p>}
           </div>
-          <Badge tone={statusTone(r.custom_status ?? (r.docstatus === 1 ? "Approved" : "Pending"))}>
-            {r.custom_status ?? (r.docstatus === 1 ? "Approved" : "Pending")}
-          </Badge>
-        </Card>
-      ))}
+        )}
+      </Modal>
     </div>
   );
 }
@@ -374,7 +466,7 @@ export default function AttendancePage() {
     { key: "late", label: "Late" },
     { key: "sick", label: "Sick" },
     { key: "permission", label: "Permission" },
-    { key: "leave", label: "Leave" },
+    { key: "leave", label: "Leave requests" },
   ];
 
   // Creating these three is the homeroom teacher's job — the server enforces
@@ -391,12 +483,20 @@ export default function AttendancePage() {
         title="Attendance records"
         subtitle="Late arrivals, sick days and permission leaves for your sections"
         actions={
-          addLabel ? (
-            <Button onClick={() => setFormOpen(true)}>
-              <Plus size={16} /> <span className="hidden sm:inline">{addLabel}</span>
-              <span className="sm:hidden">Log</span>
-            </Button>
-          ) : undefined
+          <>
+            <Link
+              to="/attendance/insight"
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <BarChart3 size={16} /> <span className="hidden sm:inline">Insight</span>
+            </Link>
+            {addLabel && tab !== "leave" && (
+              <Button onClick={() => setFormOpen(true)}>
+                <Plus size={16} /> <span className="hidden sm:inline">{addLabel}</span>
+                <span className="sm:hidden">Log</span>
+              </Button>
+            )}
+          </>
         }
       />
       {!canLog && tab !== "leave" && (

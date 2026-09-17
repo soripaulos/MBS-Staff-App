@@ -1,6 +1,17 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlarmClock, CalendarDays, GraduationCap, Inbox, MessageSquare, Stethoscope, Users, FileQuestion } from "lucide-react";
+import {
+  AlarmClock,
+  CalendarDays,
+  ClipboardList,
+  GraduationCap,
+  Inbox,
+  MessageSquare,
+  ShieldAlert,
+  Stethoscope,
+  Users,
+  FileQuestion,
+} from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useAcademic } from "@/providers/AcademicProvider";
@@ -117,6 +128,23 @@ export default function DashboardPage() {
     enabled: session.isTeacher,
     queryFn: () => getCount("Teacher Parent Message", [["teacher", "=", user!], ["status", "=", "Responded"]]).catch(() => 0),
   });
+  const openTasks = useQuery({
+    queryKey: ["dash-todos", user],
+    enabled: !!user,
+    queryFn: () => getCount("ToDo", [["allocated_to", "=", user!], ["status", "=", "Open"]]).catch(() => 0),
+  });
+  // Leave requests a homeroom teacher is expected to decide. The server scopes
+  // the query to their own sections, so a plain Pending count is already theirs.
+  const myLeaveApprovals = useQuery({
+    queryKey: ["dash-my-leave-approvals", user],
+    enabled: session.homeroomGroups.length > 0,
+    queryFn: () => getCount("Student Leave Application", [["custom_status", "=", "Pending"]]).catch(() => 0),
+  });
+  const openIncidents = useQuery({
+    queryKey: ["dash-incidents", user],
+    enabled: session.isTeacher,
+    queryFn: () => getCount("Student Discipline Incident", [["status", "=", "Open"]]).catch(() => 0),
+  });
   const openAppeals = useQuery({
     queryKey: ["dash-appeals"],
     enabled: session.isAdmin,
@@ -164,12 +192,31 @@ export default function DashboardPage() {
             <Tile to="/students" label="My sections" value={myGroups.length} icon={<Users size={20} />} />
             <Tile to="/results" label="Subjects I teach" value={subjects.size} icon={<GraduationCap size={20} />} />
             <Tile
-              to="/messages"
+              to="/messages?filter=Responded"
               label="Parent replies"
               value={parentReplies.data}
               loading={parentReplies.isLoading}
               icon={<MessageSquare size={20} />}
             />
+            <Tile to="/tasks" label="Tasks to do" value={openTasks.data} loading={openTasks.isLoading} icon={<ClipboardList size={20} />} />
+            {!!openIncidents.data && (
+              <Tile
+                to="/students"
+                label="Open incidents"
+                value={openIncidents.data}
+                loading={openIncidents.isLoading}
+                icon={<ShieldAlert size={20} />}
+              />
+            )}
+            {session.homeroomGroups.length > 0 && !!myLeaveApprovals.data && (
+              <Tile
+                to="/attendance/records?tab=leave"
+                label="Leave to approve"
+                value={myLeaveApprovals.data}
+                loading={myLeaveApprovals.isLoading}
+                icon={<CalendarDays size={20} />}
+              />
+            )}
           </>
         )}
         {session.isAdmin && (

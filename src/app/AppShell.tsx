@@ -3,13 +3,16 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
+  BookOpen,
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardCheck,
+  ClipboardList,
   GraduationCap,
   Home,
   LogOut,
   MessageSquare,
+  MessageSquarePlus,
   Moon,
   MoreHorizontal,
   Star,
@@ -35,9 +38,12 @@ export interface NavItem {
 
 /**
  * The bottom bar holds the five things reached most often in a school day.
- * For someone who teaches, that is the register — previously buried two taps
- * deep under "More". For office-based leadership, who have no timetable, it is
- * students and analytics instead.
+ * For someone who teaches, that is the register and the parent thread —
+ * messaging used to be two taps deep under "More", which is most of the reason
+ * it went unused. The timetable moves the other way: the day's lessons are
+ * already the first thing on Home, so the full week can live under "More".
+ * For office-based leadership, who have no timetable, it is students and
+ * analytics instead.
  */
 function useNavItems(): { primary: NavItem[]; more: NavItem[] } {
   const s = useSession();
@@ -46,29 +52,32 @@ function useNavItems(): { primary: NavItem[]; more: NavItem[] } {
   const primary: NavItem[] = teaches
     ? [
         { to: "/", label: "Home", icon: <Home size={20} />, show: true },
-        { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: true },
         { to: "/attendance", label: "Attendance", icon: <ClipboardCheck size={20} />, show: true },
+        { to: "/messages", label: "Messages", icon: <MessageSquare size={20} />, show: true },
         { to: "/results", label: "Results", icon: <GraduationCap size={20} />, show: true },
         { to: "/more", label: "More", icon: <MoreHorizontal size={20} />, show: true },
       ]
     : [
         { to: "/", label: "Home", icon: <Home size={20} />, show: true },
         { to: "/students", label: "Students", icon: <Users size={20} />, show: s.isLeadership },
+        { to: "/messages", label: "Messages", icon: <MessageSquare size={20} />, show: s.isLeadership },
         { to: "/results", label: "Results", icon: <GraduationCap size={20} />, show: s.isLeadership },
-        { to: "/analytics", label: "Insights", icon: <ChartNoAxesCombined size={20} />, show: s.isLeadership },
         { to: "/more", label: "More", icon: <MoreHorizontal size={20} />, show: true },
       ];
 
   const more: NavItem[] = [
+    { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: true },
     { to: "/students", label: "Students", icon: <Users size={20} />, show: teaches && (s.isTeacher || s.isLeadership) },
+    { to: "/lessons", label: "Lesson plans", icon: <BookOpen size={20} />, show: s.isTeacher },
     { to: "/attendance", label: "Daily register", icon: <ClipboardCheck size={20} />, show: !teaches && s.isLeadership },
     { to: "/attendance/records", label: "Attendance records", icon: <ClipboardCheck size={20} />, show: s.isTeacher || s.isLeadership },
-    { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: !teaches },
-    { to: "/messages", label: "Parent messages", icon: <MessageSquare size={20} />, show: s.isTeacher || s.isLeadership },
+    { to: "/attendance/insight", label: "Attendance insight", icon: <ChartNoAxesCombined size={20} />, show: s.isTeacher || s.isLeadership },
+    { to: "/tasks", label: "My tasks", icon: <ClipboardList size={20} />, show: true },
     { to: "/notifications", label: "Notifications", icon: <Bell size={20} />, show: true },
     { to: "/evaluations", label: "My evaluations", icon: <Star size={20} />, show: s.isTeacher || s.isLeadership },
     { to: "/analytics", label: "Insights", icon: <ChartNoAxesCombined size={20} />, show: teaches && s.isLeadership },
     { to: "/leave", label: "My leave", icon: <Briefcase size={20} />, show: !!s.employee || s.isHR },
+    { to: "/feedback", label: "Staff feedback", icon: <MessageSquarePlus size={20} />, show: true },
   ];
   return { primary: primary.filter((i) => i.show), more: more.filter((i) => i.show) };
 }
