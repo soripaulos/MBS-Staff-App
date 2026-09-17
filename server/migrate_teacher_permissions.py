@@ -348,12 +348,22 @@ def _reviewer_permlevel(dry_run: bool) -> str:
 
 
 def _teachers_to_destaff() -> list[str]:
-    """Users who should lose `Academics User`.
+    """Users who should lose `Academics User`: classroom teachers with a
+    linked Instructor record and no elevated role. 103 accounts as of
+    2026-09-17.
 
-    Real teachers = hold Academics User AND have a linked Instructor record.
-    Leadership (Director / Education Manager / System Manager / Registrar)
-    keeps the role. Staff with no Instructor record keep it too, by
-    decision, so nobody loses working access while unlinked.
+    Deliberately NOT included, per decisions taken 2026-09-17:
+      * the 17 leadership accounts (Director / Education Manager /
+        System Manager / DD Student Registrar) — excluded by the NOT IN;
+      * 8 staff with Employee designation "Teacher" but no Instructor
+        record — they keep the role so they don't lose working access
+        before someone links them;
+      * 6 non-teaching staff with Employee records (School Nurse, Unit
+        Leader, Department Head, three vice-directors) — real staff;
+      * `sintayehu@m.b.s` (HR / Accounts) — needs student data for fee
+        and scholarship work.
+    All four groups are excluded simply by requiring a linked Instructor
+    record, except the leadership NOT IN clause.
     """
     return frappe.db.sql_list("""
         SELECT DISTINCT u.name
@@ -369,8 +379,29 @@ def _teachers_to_destaff() -> list[str]:
     """)
 
 
-EXTRA_DESTAFF = [
+# Second accounts belonging to teachers who already have a properly linked
+# account under a different address, plus one shared departmental login.
+# They lose `Academics User` but stay enabled, so if any turns out to be
+# someone's real login they can still sign in — just without staff rights.
+DUPLICATE_ACCOUNTS = [
+    "addisu_kinfu@m.b.s",
+    "aliyi.abu@m.b.s",            # -> aliyiabu07@gmail.com
+    "dagi.tassew74@gmail.com",    # -> dagim.tahir@m.b.s
+    "ferdowse.mohammed@m.b.s",    # -> fordosa.mohammed@m.b.s
+    "g1mat@m.b.s",                # shared "G1 MAT Teacher" login
+    "haymanot.andualem@m.b.s",    # -> hayimanot.andualem@m.b.s
+    "meskerem.lema@m.b.s",        # -> meskilema0@gmail.com
+    "mohammed.abdo@m.b.s",
+    "rosa.abreham@m.b.s",         # -> roza.abreham@m.b.s
+    "tamiru.demissie@m.b.s",
+    "tegenu.derersa@m.b.s",       # -> tegenud12@gmail.com
+    "yohannes.nigussie@m.b.s",    # -> yohannesn079@gmail.com
+]
+
+EXTRA_DESTAFF = DUPLICATE_ACCOUNTS + [
     # Student account that should never have held a staff role.
+    # Already removed via MCP on 2026-09-17; listed for completeness and
+    # so a re-run is a no-op rather than a surprise.
     "M2/33467/18@m.b.s",
 ]
 
