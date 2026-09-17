@@ -140,7 +140,7 @@ function LateForm({ onDone }: { onDone: () => void }) {
   const [date, setDate] = useState(today());
   const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [reason, setReason] = useState("");
-  const m = useCreateSubmit("Student Late Day", "Student Late Day");
+  const m = useCreateSubmit("Student Late Record", "Student Late Record");
   return (
     <form
       className="space-y-3"
@@ -183,7 +183,7 @@ function SickForm({ onDone }: { onDone: () => void }) {
   const [action, setAction] = useState<string>(SICK_ACTIONS[0]);
   const [leaveEarly, setLeaveEarly] = useState(false);
   const [leaveTime, setLeaveTime] = useState("12:00");
-  const m = useCreateSubmit("Student Sick Day", "Student Sick Day");
+  const m = useCreateSubmit("Student Sick Record", "Student Sick Record");
   return (
     <form
       className="space-y-3"
@@ -419,7 +419,7 @@ export default function AttendancePage() {
 
       {tab === "late" && (
         <RecordList<{ name: string; student: string; date: string; time?: string; reason?: string }>
-          doctype="Student Late Day"
+          doctype="Student Late Record"
           fields={["name", "student", "date", "time", "reason"]}
           range={range}
           emptyHint="Late arrivals logged in this date range will appear here."
@@ -442,7 +442,7 @@ export default function AttendancePage() {
       )}
       {tab === "sick" && (
         <RecordList<{ name: string; student: string; date: string; type?: string; details?: string; parent_contacted?: number; leave_early?: number }>
-          doctype="Student Sick Day"
+          doctype="Student Sick Record"
           fields={["name", "student", "date", "type", "details", "parent_contacted", "leave_early"]}
           range={range}
           emptyHint="Sick day records in this date range will appear here."

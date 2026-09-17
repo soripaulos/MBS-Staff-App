@@ -15,9 +15,9 @@ import { cn } from "@/lib/utils";
  *
  * The four marks a teacher actually uses are Present / Late / Absent / Leave,
  * but `Student Attendance.status` only has Present, Absent and Leave — so Late
- * is recorded as Present in the register plus a `Student Late Day` record.
+ * is recorded as Present in the register plus a `Student Late Record` record.
  * Absences can likewise be tagged Sick or Permission, which writes the matching
- * `Student Sick Day` / `Student Permission Leave`.
+ * `Student Sick Record` / `Student Permission Leave`.
  *
  * Creating those three doctypes is the homeroom teacher's job (enforced
  * server-side by Before Save guards), so subject teachers see a plain
@@ -78,7 +78,7 @@ export default function TakeAttendancePage() {
         ),
         ids.length
           ? safe(() =>
-              getList<{ student: string; time?: string }>("Student Late Day", {
+              getList<{ student: string; time?: string }>("Student Late Record", {
                 filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]],
                 fields: ["student", "time"],
                 limit: 300,
@@ -87,7 +87,7 @@ export default function TakeAttendancePage() {
           : Promise.resolve([]),
         ids.length
           ? safe(() =>
-              getList<{ student: string; type?: string }>("Student Sick Day", {
+              getList<{ student: string; type?: string }>("Student Sick Record", {
                 filters: [["date", "=", date], ["student", "in", ids], ["docstatus", "!=", 2]],
                 fields: ["student", "type"],
                 limit: 300,
@@ -233,7 +233,7 @@ export default function TakeAttendancePage() {
           const date = schedule.schedule_date;
           try {
             if (mark === "Late" && !alreadyLogged.has(`late:${student}`)) {
-              const doc = await createDoc<Record<string, unknown>>("Student Late Day", {
+              const doc = await createDoc<Record<string, unknown>>("Student Late Record", {
                 student,
                 date,
                 time: `${d.lateTime || new Date().toTimeString().slice(0, 5)}:00`,
@@ -242,7 +242,7 @@ export default function TakeAttendancePage() {
               await submitDoc(doc).catch(() => undefined);
               written.events++;
             } else if (mark === "Absent" && d.absenceKind === "sick" && !alreadyLogged.has(`sick:${student}`)) {
-              const doc = await createDoc<Record<string, unknown>>("Student Sick Day", {
+              const doc = await createDoc<Record<string, unknown>>("Student Sick Record", {
                 student,
                 date,
                 type: d.sickType || SICK_TYPES[0],

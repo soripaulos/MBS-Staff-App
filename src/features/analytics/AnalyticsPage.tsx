@@ -78,7 +78,7 @@ export default function AnalyticsPage() {
   const lates = useQuery({
     queryKey: ["stats-lates", range.from, range.to],
     queryFn: () =>
-      getList<{ date: string }>("Student Late Day", {
+      getList<{ date: string }>("Student Late Record", {
         filters: [["date", "between", [range.from, range.to]], ["docstatus", "!=", 2]] as never,
         fields: ["date"],
         limit: 5000,
@@ -88,7 +88,7 @@ export default function AnalyticsPage() {
   const sicks = useQuery({
     queryKey: ["stats-sicks", range.from, range.to],
     queryFn: () =>
-      getList<{ date: string; type?: string }>("Student Sick Day", {
+      getList<{ date: string; type?: string }>("Student Sick Record", {
         filters: [["date", "between", [range.from, range.to]], ["docstatus", "!=", 2]] as never,
         fields: ["date", "type"],
         limit: 5000,

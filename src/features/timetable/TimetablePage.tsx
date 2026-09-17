@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
@@ -109,6 +109,44 @@ export default function TimetablePage() {
   const q = useWeekSchedule(mode, effectiveGroup, start);
   const holidays = useHolidays(start);
 
+  // The current week is frequently empty — at a year boundary, or before the
+  // next term's schedules have been generated — and an empty grid reads as a
+  // broken app rather than an empty calendar. So if this week has nothing,
+  // fall back once to the most recent week that does.
+  const latest = useQuery({
+    queryKey: ["latest-schedule", mode, effectiveGroup, session.instructor?.name],
+    enabled: mode === "mine" ? !!session.instructor : !!effectiveGroup,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const rows = await getList<{ schedule_date: string }>("Course Schedule", {
+        filters:
+          mode === "mine"
+            ? [["instructor", "=", session.instructor!.name]]
+            : [["student_group", "=", effectiveGroup!]],
+        fields: ["schedule_date"],
+        orderBy: "schedule_date desc",
+        limit: 1,
+      }).catch(() => []);
+      return rows[0]?.schedule_date ?? null;
+    },
+  });
+
+  const [jumpedTo, setJumpedTo] = useState<string | null>(null);
+  const [didJump, setDidJump] = useState(false);
+  useEffect(() => {
+    if (didJump || q.isLoading || !latest.data) return;
+    if ((q.data?.length ?? 0) > 0) {
+      setDidJump(true);
+      return;
+    }
+    const last = parseYmd(latest.data);
+    if (last < start) {
+      setStart(weekStart(last));
+      setJumpedTo(latest.data);
+    }
+    setDidJump(true);
+  }, [didJump, q.isLoading, q.data, latest.data, start]);
+
   const days = useMemo(() => Array.from({ length: 6 }, (_, i) => addDays(start, i)), [start]); // Mon–Sat
   const byDay = useMemo(() => {
     const m = new Map<string, CourseScheduleRow[]>();
@@ -163,6 +201,15 @@ export default function TimetablePage() {
       <p className="mb-3 text-xs text-slate-500">
         Week of {dualDate(start)} — {ymd(start)} to {ymd(addDays(start, 5))}
       </p>
+      {jumpedTo && (
+        <Card className="mb-3 flex items-start gap-2 py-2.5">
+          <CalendarDays size={16} className="mt-0.5 shrink-0 text-slate-400" />
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Nothing is scheduled for the current week, so this is the most recent week with lessons. Use{" "}
+            <b>Today</b> to jump back.
+          </p>
+        </Card>
+      )}
 
       {q.isLoading ? (
         <ListSkeleton rows={5} />

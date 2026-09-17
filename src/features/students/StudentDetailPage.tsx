@@ -72,7 +72,7 @@ function useTimeline(student: string) {
           ),
         ),
         safe(() =>
-          getList<{ date: string; reason?: string }>("Student Late Day", {
+          getList<{ date: string; reason?: string }>("Student Late Record", {
             filters: [["student", "=", student], ["docstatus", "!=", 2]],
             fields: ["date", "reason"],
             orderBy: "date desc",
@@ -80,7 +80,7 @@ function useTimeline(student: string) {
           }),
         ),
         safe(() =>
-          getList<{ date: string; type?: string; details?: string }>("Student Sick Day", {
+          getList<{ date: string; type?: string; details?: string }>("Student Sick Record", {
             filters: [["student", "=", student], ["docstatus", "!=", 2]],
             fields: ["date", "type", "details"],
             orderBy: "date desc",
@@ -328,10 +328,17 @@ function EvaluationsTab({ student, canCreate }: { student: string; canCreate: bo
   const q = useQuery({
     queryKey: ["student-evals", student],
     queryFn: async () => {
-      const fields = ["name", "review_date", "reviewer", "class", "feedback", ...EVAL_GROUPS.flatMap((g) => g.fields.map((f) => f[0]))];
+      const fields = [
+        "name",
+        "review_date",
+        "reviewer_name",
+        "status",
+        "parent_response",
+        ...EVAL_GROUPS.flatMap((g) => g.fields.map((f) => f[0])),
+      ];
       try {
-        return await getList<Record<string, unknown>>("Student Evaluation", {
-          filters: [["students", "=", student]],
+        return await getList<Record<string, unknown>>("Student Hub Evaluation", {
+          filters: [["student", "=", student]],
           fields,
           orderBy: "review_date desc",
           limit: 20,
@@ -367,11 +374,13 @@ function EvaluationsTab({ student, canCreate }: { student: string; canCreate: bo
         <button key={String(e.name)} className="w-full text-left" onClick={() => setOpen(e)}>
           <Card className="flex items-center gap-3 hover:shadow-md">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">{String(e.class ?? "General evaluation")}</p>
-              <p className="text-xs text-slate-500">
-                {String(e.reviewer ?? "")} · {formatDate(String(e.review_date ?? ""))}
+              <p className="text-sm font-semibold">{formatDate(String(e.review_date ?? ""))}</p>
+              <p className="truncate text-xs text-slate-500">
+                {String(e.reviewer_name ?? "—")}
+                {e.parent_response ? ` · parent replied` : ""}
               </p>
             </div>
+            {!!e.status && <Badge tone={statusTone(String(e.status))}>{String(e.status)}</Badge>}
           </Card>
         </button>
       ))}
@@ -395,8 +404,11 @@ function EvaluationsTab({ student, canCreate }: { student: string; canCreate: bo
                 </div>
               );
             })}
-            {!!open.feedback && (
-              <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">{stripHtml(String(open.feedback))}</div>
+            {!!open.parent_response && (
+              <div className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800">
+                <p className="mb-1 text-[11px] font-semibold uppercase text-slate-500">Parent replied</p>
+                {stripHtml(String(open.parent_response))}
+              </div>
             )}
           </div>
         )}

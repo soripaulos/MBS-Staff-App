@@ -131,12 +131,12 @@ export default function DashboardPage() {
   const latesToday = useQuery({
     queryKey: ["dash-lates", t],
     enabled: session.isLeadership,
-    queryFn: () => getCount("Student Late Day", [["date", "=", t]]).catch(() => undefined),
+    queryFn: () => getCount("Student Late Record", [["date", "=", t]]).catch(() => undefined),
   });
   const sickToday = useQuery({
     queryKey: ["dash-sick", t],
     enabled: session.isLeadership,
-    queryFn: () => getCount("Student Sick Day", [["date", "=", t]]).catch(() => undefined),
+    queryFn: () => getCount("Student Sick Record", [["date", "=", t]]).catch(() => undefined),
   });
   const pendingLeaves = useQuery({
     queryKey: ["dash-pending-leaves"],
