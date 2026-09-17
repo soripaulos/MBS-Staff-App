@@ -1,13 +1,14 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import { createDoc, getList, submitDoc } from "@/lib/api";
 import { formatDate, formatTime, today, ymd, addDays } from "@/lib/dates";
 import { PERMISSION_REASONS, SICK_ACTIONS, SICK_TYPES } from "@/lib/constants";
 import { useAcademic } from "@/providers/AcademicProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useGroupStudents, useMyGroups } from "@/features/shared/useGroups";
+import { useStudentNames } from "@/features/shared/useStudentNames";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Label, ListSkeleton, Modal, PageTitle, Select, Tabs, Textarea, statusTone } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -41,7 +42,11 @@ function StudentField({
   student: string;
   setStudent: (s: string) => void;
 }) {
-  const { groups } = useMyGroups();
+  const session = useSession();
+  const { groups: allGroups } = useMyGroups();
+  // Only sections this user may actually file records for: their homeroom
+  // groups, or everything for leadership.
+  const groups = session.isLeadership ? allGroups : session.homeroomGroups;
   const effective = group ?? groups[0]?.name ?? null;
   const students = useGroupStudents(effective);
   return (
@@ -86,7 +91,6 @@ function RecordList<T extends { name: string; student: string; date?: string }>(
   render: (row: T, studentName: (id: string) => string) => ReactNode;
   emptyHint: string;
 }) {
-  const session = useSession();
   const q = useQuery({
     queryKey: [doctype, range.from, range.to],
     queryFn: () =>
@@ -98,52 +102,17 @@ function RecordList<T extends { name: string; student: string; date?: string }>(
       }),
   });
 
-  // Resolve student names + teacher scoping via group membership of my groups.
-  const { groups } = useMyGroups();
-  const memberQueries = useQuery({
-    queryKey: ["members-of-my-groups", groups.map((g) => g.name).join(",")],
-    enabled: groups.length > 0 && !session.isLeadership,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const map = new Map<string, string>();
-      const { getDoc } = await import("@/lib/api");
-      for (const g of groups.slice(0, 12)) {
-        try {
-          const doc = await getDoc<{ students?: { student: string; student_name: string }[] }>("Student Group", g.name);
-          for (const s of doc.students ?? []) map.set(s.student, s.student_name);
-        } catch {
-          /* skip group */
-        }
-      }
-      return map;
-    },
-  });
-
-  const names = useQuery({
-    queryKey: ["student-names", (q.data ?? []).map((r) => r.student).join(",").slice(0, 500)],
-    enabled: session.isLeadership && !!q.data?.length,
-    queryFn: async () => {
-      const ids = [...new Set((q.data ?? []).map((r) => r.student))];
-      const rows = await getList<{ name: string; student_name: string }>("Student", {
-        filters: [["name", "in", ids]],
-        fields: ["name", "student_name"],
-        limit: ids.length,
-      });
-      return new Map(rows.map((r) => [r.name, r.student_name]));
-    },
-  });
+  // Rows are already scoped to the caller's own sections by the server-side
+  // permission queries, so there is no client-side filtering to do — only
+  // names to resolve, since the records carry bare student IDs.
+  const { nameOf } = useStudentNames((q.data ?? []).map((r) => r.student));
 
   if (q.isLoading) return <ListSkeleton rows={5} />;
   if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
 
-  let rows = q.data ?? [];
-  if (!session.isLeadership && memberQueries.data) {
-    rows = rows.filter((r) => memberQueries.data.has(r.student));
-  }
-  const studentName = (id: string) => memberQueries.data?.get(id) ?? names.data?.get(id) ?? id;
-
+  const rows = q.data ?? [];
   if (!rows.length) return <EmptyState title="No records" hint={emptyHint} />;
-  return <div className="space-y-2">{rows.map((r) => render(r, studentName))}</div>;
+  return <div className="space-y-2">{rows.map((r) => render(r, nameOf))}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -394,6 +363,7 @@ function StudentLeaveTab() {
 /* ------------------------------------------------------------------ */
 
 export default function AttendancePage() {
+  const session = useSession();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "late";
   const setTab = (t: string) => setParams({ tab: t }, { replace: true });
@@ -401,26 +371,43 @@ export default function AttendancePage() {
   const [formOpen, setFormOpen] = useState(false);
 
   const tabs = [
-    { key: "late", label: "Late days" },
-    { key: "sick", label: "Sick days" },
+    { key: "late", label: "Late" },
+    { key: "sick", label: "Sick" },
     { key: "permission", label: "Permission" },
-    { key: "leave", label: "Leave applications" },
+    { key: "leave", label: "Leave" },
   ];
 
-  const addLabel = { late: "Log late arrival", sick: "Log sick day", permission: "Record permission" }[tab];
+  // Creating these three is the homeroom teacher's job — the server enforces
+  // it with a Before Save guard, so showing the button to anyone else would
+  // only produce a rejection.
+  const canLog = session.canLogAttendanceEvents;
+  const addLabel = canLog
+    ? { late: "Log late arrival", sick: "Log sick day", permission: "Record permission" }[tab]
+    : undefined;
 
   return (
     <div>
       <PageTitle
         title="Attendance records"
+        subtitle="Late arrivals, sick days and permission leaves for your sections"
         actions={
           addLabel ? (
             <Button onClick={() => setFormOpen(true)}>
-              <Plus size={16} /> {addLabel}
+              <Plus size={16} /> <span className="hidden sm:inline">{addLabel}</span>
+              <span className="sm:hidden">Log</span>
             </Button>
           ) : undefined
         }
       />
+      {!canLog && tab !== "leave" && (
+        <Card className="mb-3 flex items-start gap-2 py-2.5">
+          <Info size={16} className="mt-0.5 shrink-0 text-slate-400" />
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            You can see these records for students you teach. Recording them is the homeroom teacher's
+            responsibility — mark the register from your timetable and a homeroom teacher will follow up.
+          </p>
+        </Card>
+      )}
       <div className="mb-3">
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
       </div>

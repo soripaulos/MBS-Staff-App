@@ -118,22 +118,9 @@ export default function DashboardPage() {
     queryFn: () => getCount("Teacher Parent Message", [["teacher", "=", user!], ["status", "=", "Responded"]]).catch(() => 0),
   });
   const openAppeals = useQuery({
-    queryKey: ["dash-appeals", session.instructor?.name],
-    enabled: session.isTeacher || session.isLeadership,
-    queryFn: async () => {
-      try {
-        const rows = await getList<{ subject: string; student_group: string }>("Appeal Result", {
-          filters: [["status", "=", "Open"]],
-          fields: ["subject", "student_group"],
-          limit: 500,
-        });
-        if (session.isLeadership) return rows.length;
-        const mine = new Set(session.subjectPairs.map((p) => `${p.course}::${p.student_group}`));
-        return rows.filter((r) => mine.has(`${r.subject}::${r.student_group}`)).length;
-      } catch {
-        return 0;
-      }
-    },
+    queryKey: ["dash-appeals"],
+    enabled: session.isAdmin,
+    queryFn: () => getCount("Appeal Result", [["status", "=", "Open"]]).catch(() => undefined),
   });
 
   const studentsCount = useQuery({
@@ -183,14 +170,16 @@ export default function DashboardPage() {
               loading={parentReplies.isLoading}
               icon={<MessageSquare size={20} />}
             />
-            <Tile
-              to="/results?tab=appeals"
-              label="Open grade appeals"
-              value={openAppeals.data}
-              loading={openAppeals.isLoading}
-              icon={<FileQuestion size={20} />}
-            />
           </>
+        )}
+        {session.isAdmin && (
+          <Tile
+            to="/results?tab=appeals"
+            label="Open grade appeals"
+            value={openAppeals.data}
+            loading={openAppeals.isLoading}
+            icon={<FileQuestion size={20} />}
+          />
         )}
         {session.isLeadership && (
           <>

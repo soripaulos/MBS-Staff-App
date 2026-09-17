@@ -435,7 +435,12 @@ export default function ResultsPage() {
   const canSeeWholeSection =
     session.isLeadership || session.homeroomGroups.some((g) => g.name === effectiveGroup);
 
-  const tab = params.get("tab") ?? "grid";
+  // Grade appeals are reviewed by Education Managers, not subject teachers —
+  // the server grants `Appeal Result` to Education Manager and System Manager
+  // only, so showing the tab to anyone else would just render a 403.
+  const canReviewAppeals = session.isAdmin;
+  const requestedTab = params.get("tab") ?? "grid";
+  const tab = requestedTab === "appeals" && !canReviewAppeals ? "grid" : requestedTab;
   const setTab = (t: string) => setParams({ ...(effectiveGroup ? { group: effectiveGroup } : {}), tab: t }, { replace: true });
 
   const results = useGroupResults(tab !== "appeals" ? effectiveGroup : null, term);
@@ -443,7 +448,7 @@ export default function ResultsPage() {
   const tabs = [
     { key: "grid", label: "Marks grid" },
     ...(canSeeWholeSection ? [{ key: "overview", label: "Section overview" }, { key: "year", label: "Year" }] : []),
-    { key: "appeals", label: "Appeals" },
+    ...(canReviewAppeals ? [{ key: "appeals", label: "Appeals" }] : []),
   ];
 
   return (

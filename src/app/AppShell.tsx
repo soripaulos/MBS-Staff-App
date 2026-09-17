@@ -33,22 +33,41 @@ export interface NavItem {
   show: boolean;
 }
 
+/**
+ * The bottom bar holds the five things reached most often in a school day.
+ * For someone who teaches, that is the register — previously buried two taps
+ * deep under "More". For office-based leadership, who have no timetable, it is
+ * students and analytics instead.
+ */
 function useNavItems(): { primary: NavItem[]; more: NavItem[] } {
   const s = useSession();
-  const primary: NavItem[] = [
-    { to: "/", label: "Home", icon: <Home size={20} />, show: true },
-    { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: true },
-    { to: "/results", label: "Results", icon: <GraduationCap size={20} />, show: s.isTeacher || s.isLeadership },
-    { to: "/students", label: "Students", icon: <Users size={20} />, show: s.isTeacher || s.isLeadership },
-    { to: "/more", label: "More", icon: <MoreHorizontal size={20} />, show: true },
-  ];
+  const teaches = !!s.instructor;
+
+  const primary: NavItem[] = teaches
+    ? [
+        { to: "/", label: "Home", icon: <Home size={20} />, show: true },
+        { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: true },
+        { to: "/attendance", label: "Attendance", icon: <ClipboardCheck size={20} />, show: true },
+        { to: "/results", label: "Results", icon: <GraduationCap size={20} />, show: true },
+        { to: "/more", label: "More", icon: <MoreHorizontal size={20} />, show: true },
+      ]
+    : [
+        { to: "/", label: "Home", icon: <Home size={20} />, show: true },
+        { to: "/students", label: "Students", icon: <Users size={20} />, show: s.isLeadership },
+        { to: "/results", label: "Results", icon: <GraduationCap size={20} />, show: s.isLeadership },
+        { to: "/analytics", label: "Insights", icon: <ChartNoAxesCombined size={20} />, show: s.isLeadership },
+        { to: "/more", label: "More", icon: <MoreHorizontal size={20} />, show: true },
+      ];
+
   const more: NavItem[] = [
-    { to: "/attendance", label: "Attendance", icon: <ClipboardCheck size={20} />, show: s.isTeacher || s.isLeadership },
+    { to: "/students", label: "Students", icon: <Users size={20} />, show: teaches && (s.isTeacher || s.isLeadership) },
+    { to: "/attendance", label: "Attendance records", icon: <ClipboardCheck size={20} />, show: !teaches && s.isLeadership },
+    { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: !teaches },
+    { to: "/messages", label: "Parent messages", icon: <MessageSquare size={20} />, show: s.isTeacher || s.isLeadership },
     { to: "/notifications", label: "Notifications", icon: <Bell size={20} />, show: true },
-    { to: "/messages", label: "Parent Messages", icon: <MessageSquare size={20} />, show: s.isTeacher || s.isLeadership },
-    { to: "/evaluations", label: "My Evaluations", icon: <Star size={20} />, show: s.isTeacher || s.isLeadership },
-    { to: "/analytics", label: "Analytics", icon: <ChartNoAxesCombined size={20} />, show: s.isLeadership },
-    { to: "/leave", label: "My Leave", icon: <Briefcase size={20} />, show: !!s.employee || s.isHR },
+    { to: "/evaluations", label: "My evaluations", icon: <Star size={20} />, show: s.isTeacher || s.isLeadership },
+    { to: "/analytics", label: "Insights", icon: <ChartNoAxesCombined size={20} />, show: teaches && s.isLeadership },
+    { to: "/leave", label: "My leave", icon: <Briefcase size={20} />, show: !!s.employee || s.isHR },
   ];
   return { primary: primary.filter((i) => i.show), more: more.filter((i) => i.show) };
 }

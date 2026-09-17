@@ -38,7 +38,7 @@ export function AcademicProvider({ children }: { children: ReactNode }) {
     enabled: !!user,
     staleTime: 12 * 60 * 60 * 1000,
     queryFn: async () => {
-      const [years, terms] = await Promise.all([
+      const [years, terms, populated] = await Promise.all([
         getList<AcademicYear>("Academic Year", {
           fields: ["name", "year_start_date", "year_end_date"],
           orderBy: "year_start_date desc",
@@ -49,8 +49,17 @@ export function AcademicProvider({ children }: { children: ReactNode }) {
           orderBy: "term_start_date desc",
           limit: 50,
         }),
+        // Which years actually have active sections. A brand-new academic year
+        // exists on the calendar long before anything is set up inside it, and
+        // defaulting to it shows every screen empty.
+        getList<{ academic_year: string }>("Student Group", {
+          filters: [["disabled", "=", 0]],
+          fields: ["academic_year"],
+          limit: 500,
+        }).catch(() => [] as { academic_year: string }[]),
       ]);
-      return { years, terms };
+      const withData = new Set(populated.map((g) => g.academic_year).filter(Boolean));
+      return { years, terms, withData };
     },
   });
 
@@ -62,13 +71,20 @@ export function AcademicProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Default to the year/term containing today (else the latest).
+  // Default to the year containing today — but only if that year has sections
+  // set up. Otherwise fall back to the most recent year that does, so the app
+  // opens on data instead of on an empty shell.
   useEffect(() => {
     if (!data || selection.year) return;
     const t = today();
-    const currentYear =
+    const hasData = (y?: AcademicYear) => !!y && (data.withData.size === 0 || data.withData.has(y.name));
+    const byDate =
       data.years.find((y) => y.year_start_date && y.year_end_date && y.year_start_date <= t && t <= y.year_end_date) ??
-      data.years.find((y) => y.year_start_date && y.year_start_date <= t) ??
+      data.years.find((y) => y.year_start_date && y.year_start_date <= t);
+    const currentYear =
+      (hasData(byDate) ? byDate : undefined) ??
+      data.years.find(hasData) ??
+      byDate ??
       data.years[0];
     const yearTerms = data.terms.filter((x) => x.academic_year === currentYear?.name);
     const currentTerm =

@@ -4,6 +4,7 @@ import {
   Bell,
   BellRing,
   Briefcase,
+  CalendarDays,
   ChartNoAxesCombined,
   ChevronRight,
   ClipboardCheck,
@@ -12,6 +13,7 @@ import {
   Moon,
   Star,
   Sun,
+  Users,
 } from "lucide-react";
 import { useSession } from "@/providers/SessionProvider";
 import { useTheme } from "@/providers/ThemeProvider";
@@ -40,29 +42,61 @@ export default function MorePage() {
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, []);
 
-  const items = [
-    { to: "/attendance", label: "Attendance records", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
-    { to: "/notifications", label: "Notifications", icon: <Bell size={20} />, show: true },
-    { to: "/messages", label: "Parent messages", icon: <MessageSquare size={20} />, show: session.isTeacher || session.isLeadership },
-    { to: "/evaluations", label: "Teacher evaluations", icon: <Star size={20} />, show: session.isTeacher || session.isLeadership },
-    { to: "/analytics", label: "Analytics", icon: <ChartNoAxesCombined size={20} />, show: session.isLeadership },
-    { to: "/leave", label: "My leave", icon: <Briefcase size={20} />, show: !!session.employee || session.isHR },
-  ].filter((i) => i.show);
+  const teaches = !!session.instructor;
+  const sections: { heading: string; items: { to: string; label: string; hint?: string; icon: React.ReactNode; show: boolean }[] }[] = [
+    {
+      heading: "Teaching",
+      items: [
+        { to: "/students", label: "Students", hint: "Rosters, profiles, records, evaluations", icon: <Users size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/timetable", label: "Timetable", hint: "Your week and section timetables", icon: <CalendarDays size={20} />, show: !teaches },
+        { to: "/attendance", label: "Attendance records", hint: "Late, sick and permission history", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
+      ],
+    },
+    {
+      heading: "Communication",
+      items: [
+        { to: "/messages", label: "Parent messages", hint: "Your threads with parents", icon: <MessageSquare size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/notifications", label: "Notifications", hint: "Your inbox and school broadcasts", icon: <Bell size={20} />, show: true },
+      ],
+    },
+    {
+      heading: "You",
+      items: [
+        { to: "/evaluations", label: "My evaluations", hint: "Anonymous ratings of your teaching", icon: <Star size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/leave", label: "My leave", hint: "Apply and track your leave", icon: <Briefcase size={20} />, show: !!session.employee || session.isHR },
+        { to: "/analytics", label: "Insights", hint: "School-wide trends", icon: <ChartNoAxesCombined size={20} />, show: session.isLeadership },
+      ],
+    },
+  ]
+    .map((s) => ({ ...s, items: s.items.filter((i) => i.show) }))
+    .filter((s) => s.items.length > 0);
 
   const isDark = document.documentElement.classList.contains("dark");
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <PageTitle title="More" />
-      <Card className="divide-y divide-slate-100 p-0 dark:divide-slate-800">
-        {items.map((i) => (
-          <Link key={i.to} to={i.to} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
-            <span className="text-brand-600 dark:text-brand-300">{i.icon}</span>
-            <span className="flex-1 text-sm font-medium">{i.label}</span>
-            <ChevronRight size={16} className="text-slate-400" />
-          </Link>
-        ))}
-      </Card>
+      {sections.map((s) => (
+        <div key={s.heading}>
+          <h2 className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{s.heading}</h2>
+          <Card className="divide-y divide-slate-100 p-0 dark:divide-slate-800">
+            {s.items.map((i) => (
+              <Link
+                key={i.to}
+                to={i.to}
+                className="flex min-h-[56px] items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+              >
+                <span className="shrink-0 text-brand-600 dark:text-brand-300">{i.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{i.label}</span>
+                  {i.hint && <span className="block truncate text-xs text-slate-500">{i.hint}</span>}
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-slate-400" />
+              </Link>
+            ))}
+          </Card>
+        </div>
+      ))}
 
       <Card className="space-y-3">
         <h2 className="text-sm font-semibold">Settings</h2>

@@ -213,17 +213,21 @@ function BroadcastsTab() {
         <EmptyState title="No broadcasts" hint="School-wide notifications sent to the student app appear here." icon={<Megaphone size={40} />} />
       ) : (
         q.data.map((n) => (
-          <Card key={n.name} className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm font-semibold">{n.title}</p>
-              <div className="flex shrink-0 gap-1.5">
-                <Badge tone="slate">{n.notification_category}</Badge>
-                <Badge tone={statusTone(n.status)}>{n.status}</Badge>
-              </div>
+          <Card key={n.name} className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold leading-snug">{n.title}</p>
+              {/* Delivery state and audience are operational detail — only the
+                  people who actually send broadcasts need to see them. */}
+              {session.canBroadcast && n.status !== "Sent" && (
+                <Badge tone={statusTone(n.status)} className="shrink-0">
+                  {n.status}
+                </Badge>
+              )}
             </div>
-            <p className="line-clamp-2 text-xs text-slate-500">{n.message}</p>
+            <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{n.message}</p>
             <p className="text-[11px] text-slate-400">
-              {n.send_to_all_students ? "All students" : "Selected sections"} · {formatDate((n.sent_date ?? n.creation)?.slice(0, 10))}
+              {n.notification_category} · {formatDate((n.sent_date ?? n.creation)?.slice(0, 10))}
+              {session.canBroadcast && ` · ${n.send_to_all_students ? "all students" : "selected sections"}`}
             </p>
           </Card>
         ))

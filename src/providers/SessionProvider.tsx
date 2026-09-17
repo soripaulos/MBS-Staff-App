@@ -26,6 +26,14 @@ export interface StaffContext {
   isAdmin: boolean;
   isHR: boolean;
   canBroadcast: boolean;
+  /** True for the group where this user is `custom_homeroom_teacher`. */
+  isHomeroomOf: (group?: string | null) => boolean;
+  /**
+   * Late days, sick days and permission leaves are the homeroom teacher's
+   * responsibility. The server enforces this too (Before Save guards on each
+   * doctype); this only decides whether we show the controls.
+   */
+  canLogAttendanceEvents: boolean;
   refetch: () => void;
 }
 
@@ -35,10 +43,13 @@ export function useSession() {
   return useContext(SessionContext);
 }
 
-const LEADERSHIP_ROLES = ["Director", "Education Manager", "Academics User", "System Manager"];
+// `Academics User` is deliberately NOT a leadership role. Nearly every teacher
+// on the live site holds it, so treating it as leadership made every teacher a
+// school-wide admin in the UI. Leadership is now the roles that actually mean it.
+const LEADERSHIP_ROLES = ["Director", "Education Manager", "System Manager", "DD Student Registrar"];
 const ADMIN_ROLES = ["System Manager", "Education Manager"];
 const HR_ROLES = ["HR Manager", "HR User", "Leave Approver"];
-const BROADCAST_ROLES = ["System Manager", "Education Manager", "Academics User", "Director"];
+const BROADCAST_ROLES = ["System Manager", "Education Manager", "Director"];
 
 interface UserDoc {
   name: string;
@@ -166,20 +177,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const d = query.data;
   const roles = d?.roles ?? [];
+  const homeroomGroups = d?.homeroomGroups ?? [];
+  const isLeadership = roles.some((r) => LEADERSHIP_ROLES.includes(r));
+  const isHomeroomOf = (group?: string | null) =>
+    !!group && homeroomGroups.some((g) => g.name === group);
   const value: StaffContext = {
     loading: query.isLoading,
     roles,
     instructor: d?.instructor ?? null,
     employee: d?.employee ?? null,
     groupsTaught: d?.groupsTaught ?? [],
-    homeroomGroups: d?.homeroomGroups ?? [],
+    homeroomGroups,
     subjectPairs: d?.subjectPairs ?? [],
     isTeacher: !!d?.instructor || roles.includes("Instructor"),
-    isAcademicAdmin: roles.some((r) => ADMIN_ROLES.includes(r) || r === "Academics User"),
-    isLeadership: roles.some((r) => LEADERSHIP_ROLES.includes(r)),
+    isAcademicAdmin: roles.some((r) => ADMIN_ROLES.includes(r)),
+    isLeadership,
     isAdmin: roles.some((r) => ADMIN_ROLES.includes(r)),
     isHR: roles.some((r) => HR_ROLES.includes(r)),
     canBroadcast: roles.some((r) => BROADCAST_ROLES.includes(r)),
+    isHomeroomOf,
+    canLogAttendanceEvents: isLeadership || homeroomGroups.length > 0,
     refetch: () => void query.refetch(),
   };
 

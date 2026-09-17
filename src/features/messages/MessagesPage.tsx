@@ -5,6 +5,7 @@ import { createDoc, getList, updateDoc } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useGroupStudents, useMyGroups } from "@/features/shared/useGroups";
+import { useStudentNames } from "@/features/shared/useStudentNames";
 import { formatDate, today } from "@/lib/dates";
 import { stripHtml } from "@/lib/utils";
 import type { TeacherParentMessageRow } from "@/lib/types";
@@ -94,7 +95,15 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
   );
 }
 
-function ThreadModal({ row, onClose }: { row: TeacherParentMessageRow | null; onClose: () => void }) {
+function ThreadModal({
+  row,
+  studentName,
+  onClose,
+}: {
+  row: TeacherParentMessageRow | null;
+  studentName: string;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const [followup, setFollowup] = useState("");
   const m = useMutation({
@@ -115,7 +124,8 @@ function ThreadModal({ row, onClose }: { row: TeacherParentMessageRow | null; on
       {row && (
         <div className="space-y-3 text-sm">
           <p className="text-xs text-slate-500">
-            {row.student} · {row.student_group} · {formatDate(row.message_date)}
+            <span className="font-medium text-slate-700 dark:text-slate-200">{studentName}</span>
+            {row.student_group ? ` · ${row.student_group}` : ""} · {formatDate(row.message_date)}
           </p>
           <div className="rounded-lg bg-brand-50 p-3 dark:bg-brand-900/30">
             <p className="mb-1 text-[11px] font-semibold uppercase text-brand-600 dark:text-brand-300">You wrote</p>
@@ -180,6 +190,8 @@ export default function MessagesPage() {
       }),
   });
 
+  const { nameOf } = useStudentNames((q.data ?? []).map((r) => r.student));
+
   return (
     <div>
       <PageTitle
@@ -214,11 +226,15 @@ export default function MessagesPage() {
             <button key={row.name} className="w-full text-left" onClick={() => setSelected(row)}>
               <Card className="flex items-center gap-3 hover:shadow-md">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{row.subject ?? "(no subject)"}</p>
+                  <p className="truncate text-sm font-semibold">{nameOf(row.student)}</p>
                   <p className="truncate text-xs text-slate-500">
-                    {row.student ?? row.student_group ?? ""} · {formatDate(row.message_date)}
-                    {row.parent_response ? ` · “${stripHtml(row.parent_response).slice(0, 60)}”` : ""}
+                    {row.subject ?? "(no subject)"} · {formatDate(row.message_date)}
                   </p>
+                  {row.parent_response && (
+                    <p className="truncate text-xs italic text-slate-400">
+                      “{stripHtml(row.parent_response).slice(0, 70)}”
+                    </p>
+                  )}
                 </div>
                 <Badge tone={statusTone(row.status)}>{row.status === "Responded" ? "Parent replied" : row.status}</Badge>
               </Card>
@@ -227,7 +243,7 @@ export default function MessagesPage() {
         </div>
       )}
       <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
-      <ThreadModal row={selected} onClose={() => setSelected(null)} />
+      <ThreadModal row={selected} studentName={nameOf(selected?.student)} onClose={() => setSelected(null)} />
     </div>
   );
 }

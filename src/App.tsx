@@ -21,6 +21,7 @@ const StudentDetail = lazy(() => import("@/features/students/StudentDetailPage")
 const Notifications = lazy(() => import("@/features/notifications/NotificationsPage"));
 const Messages = lazy(() => import("@/features/messages/MessagesPage"));
 const Evaluations = lazy(() => import("@/features/evaluations/EvaluationsPage"));
+const NewStudentEvaluation = lazy(() => import("@/features/evaluations/NewStudentEvaluationPage"));
 const Analytics = lazy(() => import("@/features/analytics/AnalyticsPage"));
 const StaffLeave = lazy(() => import("@/features/leave/StaffLeavePage"));
 const More = lazy(() => import("@/features/more/MorePage"));
@@ -88,6 +89,7 @@ export default function App() {
                     ["/attendance/take/:scheduleId", TakeAttendance],
                     ["/students", Students],
                     ["/students/:id", StudentDetail],
+                    ["/students/:id/evaluate", NewStudentEvaluation],
                     ["/notifications", Notifications],
                     ["/messages", Messages],
                     ["/evaluations", Evaluations],

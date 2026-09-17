@@ -324,7 +324,7 @@ const EVAL_GROUPS: { label: string; fields: [string, string][] }[] = [
   },
 ];
 
-function EvaluationsTab({ student }: { student: string }) {
+function EvaluationsTab({ student, canCreate }: { student: string; canCreate: boolean }) {
   const q = useQuery({
     queryKey: ["student-evals", student],
     queryFn: async () => {
@@ -343,10 +343,26 @@ function EvaluationsTab({ student }: { student: string }) {
   });
   const [open, setOpen] = useState<Record<string, unknown> | null>(null);
 
+  const newLink = (
+    <Link
+      to={`/students/${encodeURIComponent(student)}/evaluate`}
+      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-700"
+    >
+      <Plus size={16} /> New evaluation
+    </Link>
+  );
+
   if (q.isLoading) return <ListSkeleton rows={4} />;
-  if (!q.data?.length) return <EmptyState title="No evaluations" hint="Teacher evaluations of this student will appear here." />;
+  if (!q.data?.length)
+    return (
+      <div className="space-y-4">
+        <EmptyState title="No evaluations yet" hint="Evaluations you write appear here and in the parents' app." />
+        {canCreate && <div className="flex justify-center">{newLink}</div>}
+      </div>
+    );
   return (
     <div className="space-y-2">
+      {canCreate && <div className="flex justify-end">{newLink}</div>}
       {q.data.map((e) => (
         <button key={String(e.name)} className="w-full text-left" onClick={() => setOpen(e)}>
           <Card className="flex items-center gap-3 hover:shadow-md">
@@ -491,7 +507,9 @@ export default function StudentDetailPage() {
         </div>
       )}
       {tab === "timeline" && id && <TimelineTab student={id} />}
-      {tab === "evaluations" && id && <EvaluationsTab student={id} />}
+      {tab === "evaluations" && id && (
+        <EvaluationsTab student={id} canCreate={session.isTeacher || session.isLeadership} />
+      )}
 
       {id && <AddRecordModal student={id} open={addOpen} onClose={() => setAddOpen(false)} />}
     </div>
