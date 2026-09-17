@@ -8,7 +8,7 @@ import { useSession } from "@/providers/SessionProvider";
 import { today } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { StudentDoc } from "@/lib/types";
-import { Button, Card, ErrorState, ListSkeleton, PageTitle } from "@/components/ui";
+import { Button, Card, ErrorState, Label, ListSkeleton, PageTitle, Select } from "@/components/ui";
 
 /**
  * Create a `Student Hub Evaluation` — the read a teacher gives on a student,
@@ -18,11 +18,13 @@ import { Button, Card, ErrorState, ListSkeleton, PageTitle } from "@/components/
  * written as stars / 5. Unrated criteria are omitted from the payload rather
  * than sent as zero, so "not assessed" stays distinct from "rated zero".
  *
- * Note the doctype's limits: it carries no subject/course, no section, no
- * free-text feedback and no behaviour flags — so a Maths teacher and a PE
- * teacher are handed the same 19 criteria and neither can say which subject
- * they are speaking about. `docs/EVALUATION_PROPOSAL.md` sets out the
- * catalogue model that fixes this.
+ * Subject was added back as a Custom Field on the doctype, so a subject
+ * teacher can say which lesson they are speaking from; leaving it blank means
+ * a whole-child read. Section, behaviour flags and free-text feedback are
+ * deliberately absent — they were removed from the original for a reason.
+ *
+ * The criteria themselves are still a fixed list every teacher sees, which is
+ * what `docs/EVALUATION_PROPOSAL.md` addresses.
  */
 
 const GROUPS: { label: string; fields: [string, string][] }[] = [
@@ -114,6 +116,14 @@ export default function NewStudentEvaluationPage() {
 
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [openSection, setOpenSection] = useState<string>(GROUPS[0].label);
+  // Subject is optional: blank means a whole-child / homeroom evaluation.
+  // Added back as a Custom Field on the doctype so a subject teacher can say
+  // which lesson they are speaking from.
+  const [course, setCourse] = useState("");
+  const mySubjects = useMemo(
+    () => [...new Set(session.subjectPairs.map((p) => p.course))].sort(),
+    [session.subjectPairs],
+  );
 
   const ratedCount = Object.keys(ratings).length;
   const totalCriteria = useMemo(() => GROUPS.reduce((a, g) => a + g.fields.length, 0), []);
@@ -124,6 +134,7 @@ export default function NewStudentEvaluationPage() {
         student: id,
         review_date: today(),
         status: "Unread",
+        ...(course ? { course } : {}),
       };
       // Rating fields are 0..1 on the server; unrated criteria are left out.
       for (const [field, stars] of Object.entries(ratings)) payload[field] = stars / 5;
@@ -150,12 +161,24 @@ export default function NewStudentEvaluationPage() {
       </Link>
       <PageTitle title="New evaluation" subtitle={`${displayName} · ${ratedCount} of ${totalCriteria} rated`} />
 
-      <Card className="mb-3 flex items-start gap-2 py-2.5">
-        <Info size={16} className="mt-0.5 shrink-0 text-slate-400" />
-        <p className="text-xs text-slate-600 dark:text-slate-300">
-          Filed as <b>{session.instructor?.instructor_name ?? user}</b>, and shared with the student's parents. Rate
-          only what you have actually seen — anything you leave blank is recorded as not assessed, not as a low score.
-        </p>
+      <Card className="mb-3 space-y-3">
+        <div>
+          <Label>Subject</Label>
+          <Select value={course} onChange={(e) => setCourse(e.target.value)}>
+            <option value="">Whole child — no specific subject</option>
+            {mySubjects.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex items-start gap-2">
+          <Info size={16} className="mt-0.5 shrink-0 text-slate-400" />
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Filed as <b>{session.instructor?.instructor_name ?? user}</b>, and shared with the student's parents. Rate
+            only what you have actually seen — anything you leave blank is recorded as not assessed, not as a low
+            score.
+          </p>
+        </div>
       </Card>
 
       {/* Accordions — 19 criteria is too long for one scroll on a phone. */}

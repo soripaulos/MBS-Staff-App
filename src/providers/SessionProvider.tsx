@@ -115,19 +115,18 @@ async function fetchStaffContext(user: string) {
   ];
   if (instructor) {
     try {
-      const links = await getChildList<{ parent: string }>("Student Group Instructor", "Student Group", {
-        filters: { instructor: instructor.name },
-        fields: ["parent"],
+      // Filter the PARENT doctype by a child-table field. Querying the child
+      // doctype directly (frappe.client.get_list with parent=...) needs
+      // permission on the child doctype itself, which teachers don't have —
+      // it returned nothing, so every teacher saw only their homeroom group.
+      groupsTaught = await getList<StudentGroup>("Student Group", {
+        filters: [
+          ["Student Group Instructor", "instructor", "=", instructor.name],
+          ["disabled", "=", 0],
+        ] as never,
+        fields: groupFields,
         limit: 200,
       });
-      const names = [...new Set(links.map((l) => l.parent))];
-      if (names.length) {
-        groupsTaught = await getList<StudentGroup>("Student Group", {
-          filters: [["name", "in", names], ["disabled", "=", 0]],
-          fields: groupFields,
-          limit: 200,
-        });
-      }
     } catch {
       /* scoped out */
     }

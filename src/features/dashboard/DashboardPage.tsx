@@ -184,10 +184,10 @@ export default function DashboardPage() {
         {session.isLeadership && (
           <>
             <Tile to="/students" label="Active students" value={studentsCount.data} loading={studentsCount.isLoading} icon={<Users size={20} />} />
-            <Tile to="/attendance?tab=late" label="Late today" value={latesToday.data} loading={latesToday.isLoading} icon={<AlarmClock size={20} />} />
-            <Tile to="/attendance?tab=sick" label="Sick today" value={sickToday.data} loading={sickToday.isLoading} icon={<Stethoscope size={20} />} />
+            <Tile to="/attendance/records?tab=late" label="Late today" value={latesToday.data} loading={latesToday.isLoading} icon={<AlarmClock size={20} />} />
+            <Tile to="/attendance/records?tab=sick" label="Sick today" value={sickToday.data} loading={sickToday.isLoading} icon={<Stethoscope size={20} />} />
             <Tile
-              to="/attendance?tab=leave"
+              to="/attendance/records?tab=leave"
               label="Pending leave requests"
               value={pendingLeaves.data}
               loading={pendingLeaves.isLoading}

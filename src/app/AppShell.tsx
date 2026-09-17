@@ -61,7 +61,8 @@ function useNavItems(): { primary: NavItem[]; more: NavItem[] } {
 
   const more: NavItem[] = [
     { to: "/students", label: "Students", icon: <Users size={20} />, show: teaches && (s.isTeacher || s.isLeadership) },
-    { to: "/attendance", label: "Attendance records", icon: <ClipboardCheck size={20} />, show: !teaches && s.isLeadership },
+    { to: "/attendance", label: "Daily register", icon: <ClipboardCheck size={20} />, show: !teaches && s.isLeadership },
+    { to: "/attendance/records", label: "Attendance records", icon: <ClipboardCheck size={20} />, show: s.isTeacher || s.isLeadership },
     { to: "/timetable", label: "Timetable", icon: <CalendarDays size={20} />, show: !teaches },
     { to: "/messages", label: "Parent messages", icon: <MessageSquare size={20} />, show: s.isTeacher || s.isLeadership },
     { to: "/notifications", label: "Notifications", icon: <Bell size={20} />, show: true },

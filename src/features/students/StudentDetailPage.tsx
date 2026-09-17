@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GraduationCap, Plus, Trophy } from "lucide-react";
 import { createDoc, fileUrl, getDoc, getList } from "@/lib/api";
 import { formatDate, today } from "@/lib/dates";
-import { initials, ratingToStars, stripHtml } from "@/lib/utils";
-import { useAcademic } from "@/providers/AcademicProvider";
+import { cn, initials, ratingToStars, stripHtml } from "@/lib/utils";
+import { useAuth } from "@/auth/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import type { StudentDoc } from "@/lib/types";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Label, ListSkeleton, Modal, PageTitle, Select, Stars, Tabs, Textarea, statusTone } from "@/components/ui";
@@ -35,15 +35,7 @@ function useTimeline(student: string) {
           return [];
         }
       };
-      const [logs, activities, incidents, discipline, lates, sicks, permissions] = await Promise.all([
-        safe(() =>
-          getList<{ type: string; date: string; log?: string }>("Student Log", {
-            filters: [["student", "=", student]],
-            fields: ["type", "date", "log"],
-            orderBy: "date desc",
-            limit: 50,
-          }),
-        ),
+      const [activities, incidents, discipline, lates, sicks, permissions] = await Promise.all([
         safe(() =>
           getList<{ activity_type?: string; activity_date?: string; title?: string; role?: string; description?: string }>("Student Activity", {
             filters: [["student", "=", student]],
@@ -97,15 +89,6 @@ function useTimeline(student: string) {
         ),
       ]);
 
-      for (const l of logs)
-        items.push({
-          kind: l.type === "Achievement" ? "Achievement" : `Log · ${l.type}`,
-          date: l.date,
-          title: l.type === "Achievement" ? "Achievement" : `${l.type} log`,
-          detail: stripHtml(l.log),
-          badge: l.type,
-          badgeTone: l.type === "Achievement" ? "green" : "slate",
-        });
       for (const a of activities)
         items.push({
           kind: "Activity",
@@ -170,7 +153,7 @@ function TimelineTab({ student }: { student: string }) {
         ))}
       </div>
       {!items.length ? (
-        <EmptyState title="Nothing here yet" hint="Logs, achievements, activities and incidents will appear here." icon={<Trophy size={40} />} />
+        <EmptyState title="Nothing here yet" hint="Activities, achievements, incidents and attendance events will appear here." icon={<Trophy size={40} />} />
       ) : (
         <ul className="space-y-2">
           {items.map((i, idx) => (
@@ -199,20 +182,43 @@ function TimelineTab({ student }: { student: string }) {
 
 function AddRecordModal({ student, open, onClose }: { student: string; open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const { year, term } = useAcademic();
-  const [kind, setKind] = useState<"Log" | "Activity">("Log");
-  const [logType, setLogType] = useState("Achievement");
+  const { user } = useAuth();
+  const [kind, setKind] = useState<"Activity" | "Incident">("Activity");
+  const [date, setDate] = useState(today());
+
+  // Student Activity
   const [activityType, setActivityType] = useState("Achievement");
   const [title, setTitle] = useState("");
+  const [role, setRole] = useState("");
+
+  // Student Discipline Incident
+  const [incidentType, setIncidentType] = useState("Incident");
+  const [severity, setSeverity] = useState("Low");
+
   const [text, setText] = useState("");
-  const [date, setDate] = useState(today());
 
   const m = useMutation({
     mutationFn: async () => {
-      if (kind === "Log") {
-        await createDoc("Student Log", { student, type: logType, date, academic_year: year, academic_term: term, log: text });
+      if (kind === "Activity") {
+        await createDoc("Student Activity", {
+          student,
+          activity_type: activityType,
+          activity_date: date,
+          title,
+          role,
+          description: text,
+          reported_by: user,
+        });
       } else {
-        await createDoc("Student Activity", { student, activity_type: activityType, activity_date: date, title, description: text });
+        await createDoc("Student Discipline Incident", {
+          student,
+          incident_date: date,
+          incident_type: incidentType,
+          severity,
+          status: "Open",
+          description: text,
+          reported_by: user,
+        });
       }
     },
     onSuccess: () => {
@@ -220,6 +226,7 @@ function AddRecordModal({ student, open, onClose }: { student: string; open: boo
       onClose();
       setText("");
       setTitle("");
+      setRole("");
     },
   });
 
@@ -232,48 +239,83 @@ function AddRecordModal({ student, open, onClose }: { student: string; open: boo
           m.mutate();
         }}
       >
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Record type</Label>
-            <Select value={kind} onChange={(e) => setKind(e.target.value as "Log" | "Activity")}>
-              <option>Log</option>
-              <option>Activity</option>
-            </Select>
-          </div>
-          <div>
-            <Label>Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div>
+          <Label>What are you recording?</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["Activity", "Incident"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={cn(
+                  "min-h-[44px] rounded-lg border px-3 text-sm font-medium",
+                  kind === k
+                    ? "border-brand-600 bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-200"
+                    : "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300",
+                )}
+              >
+                {k === "Activity" ? "Activity / achievement" : "Discipline incident"}
+              </button>
+            ))}
           </div>
         </div>
-        {kind === "Log" ? (
-          <div>
-            <Label>Log type</Label>
-            <Select value={logType} onChange={(e) => setLogType(e.target.value)}>
-              {["General", "Academic", "Medical", "Achievement"].map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </Select>
-          </div>
-        ) : (
+
+        <div>
+          <Label>Date</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        </div>
+
+        {kind === "Activity" ? (
           <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type</Label>
+                <Select value={activityType} onChange={(e) => setActivityType(e.target.value)}>
+                  {["Club", "Sport", "Volunteer", "Achievement", "Note"].map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label>Role (optional)</Label>
+                <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Team Lead" />
+              </div>
+            </div>
             <div>
-              <Label>Activity type</Label>
-              <Select value={activityType} onChange={(e) => setActivityType(e.target.value)}>
-                {["Club", "Sport", "Volunteer", "Achievement", "Note"].map((t) => (
+              <Label>Title</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Robotics Club" required />
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Category</Label>
+              <Select value={incidentType} onChange={(e) => setIncidentType(e.target.value)}>
+                {["Academic", "Incident", "Disciplinary", "Other"].map((t) => (
                   <option key={t}>{t}</option>
                 ))}
               </Select>
             </div>
             <div>
-              <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Robotics Club — Team Lead" required />
+              <Label>Severity</Label>
+              <Select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                {["Low", "Medium", "High"].map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </Select>
             </div>
-          </>
+          </div>
         )}
+
         <div>
-          <Label>Details</Label>
+          <Label>{kind === "Activity" ? "Details" : "What happened"}</Label>
           <Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} required />
         </div>
+        {kind === "Incident" && (
+          <p className="text-xs text-slate-400">
+            Opens as an incident for follow-up. Parents may respond, and it stays Open until a resolution is recorded.
+          </p>
+        )}
         <Button type="submit" className="w-full" disabled={m.isPending}>
           {m.isPending ? "Saving…" : "Save record"}
         </Button>

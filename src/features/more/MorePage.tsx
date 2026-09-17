@@ -49,7 +49,7 @@ export default function MorePage() {
       items: [
         { to: "/students", label: "Students", hint: "Rosters, profiles, records, evaluations", icon: <Users size={20} />, show: session.isTeacher || session.isLeadership },
         { to: "/timetable", label: "Timetable", hint: "Your week and section timetables", icon: <CalendarDays size={20} />, show: !teaches },
-        { to: "/attendance", label: "Attendance records", hint: "Late, sick and permission history", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
+        { to: "/attendance/records", label: "Attendance records", hint: "Late, sick and permission history", icon: <ClipboardCheck size={20} />, show: session.isTeacher || session.isLeadership },
       ],
     },
     {

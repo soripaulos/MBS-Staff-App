@@ -14,6 +14,7 @@ const Dashboard = lazy(() => import("@/features/dashboard/DashboardPage"));
 const Timetable = lazy(() => import("@/features/timetable/TimetablePage"));
 const Results = lazy(() => import("@/features/results/ResultsPage"));
 const StudentResults = lazy(() => import("@/features/results/StudentResultsPage"));
+const DailyRegister = lazy(() => import("@/features/attendance/DailyRegisterPage"));
 const Attendance = lazy(() => import("@/features/attendance/AttendancePage"));
 const TakeAttendance = lazy(() => import("@/features/attendance/TakeAttendancePage"));
 const Students = lazy(() => import("@/features/students/StudentsPage"));
@@ -85,7 +86,8 @@ export default function App() {
                     ["/timetable", Timetable],
                     ["/results", Results],
                     ["/results/student/:id", StudentResults],
-                    ["/attendance", Attendance],
+                    ["/attendance", DailyRegister],
+                    ["/attendance/records", Attendance],
                     ["/attendance/take/:scheduleId", TakeAttendance],
                     ["/students", Students],
                     ["/students/:id", StudentDetail],
