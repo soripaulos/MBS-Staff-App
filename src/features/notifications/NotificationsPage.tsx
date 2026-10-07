@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck, Megaphone, Plus } from "lucide-react";
-import { call, createDoc, fileUrl, getList, updateDoc } from "@/lib/api";
+import { call, createDoc, fileUrl, getList, submitDoc, updateDoc } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useMyGroups } from "@/features/shared/useGroups";
@@ -95,16 +95,21 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState<"all" | "groups">("all");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [sendNow, setSendNow] = useState(true);
 
   const m = useMutation({
-    mutationFn: () =>
-      createDoc("App Notification", {
+    mutationFn: async () => {
+      const doc = await createDoc<Record<string, unknown>>("App Notification", {
         title,
         notification_category: category,
         message,
         send_to_all_students: audience === "all" ? 1 : 0,
         student_groups: audience === "groups" ? selectedGroups.map((g) => ({ student_group: g })) : [],
-      }),
+      });
+      // Submitting is what sends it: each student gets it in their own inbox
+      // and on the phones signed in to their account.
+      if (sendNow) await submitDoc(doc);
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["app-notifications"] });
       onClose();
@@ -162,12 +167,19 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
             ))}
           </div>
         )}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="h-4 w-4" checked={sendNow} onChange={(e) => setSendNow(e.target.checked)} />
+          Send now
+        </label>
         <p className="text-xs text-slate-400">
-          Saved as a <b>Draft</b>. Delivery to student devices runs through the school's send flow — open the record on the desk to
-          send, or ask ICT to trigger it.
+          {sendNow
+            ? audience === "all"
+              ? "Every student gets this in their app inbox, with an alert on their phones."
+              : "Only students in the selected sections get this, in their app inbox and on their phones."
+            : "Saved as a draft. Send it later from the desk."}
         </p>
         <Button type="submit" className="w-full" disabled={m.isPending || (audience === "groups" && !selectedGroups.length)}>
-          {m.isPending ? "Saving…" : "Save draft"}
+          {m.isPending ? (sendNow ? "Sending…" : "Saving…") : sendNow ? "Send" : "Save draft"}
         </Button>
         {m.isError && <p className="text-xs text-red-600">{(m.error as Error).message}</p>}
       </form>
@@ -192,7 +204,7 @@ function BroadcastsTab() {
         ] as never,
         fields: [
           "name", "title", "status", "sent_date", "notification_category", "message", "send_to_all_students", "creation",
-          "recipient_count", "delivery_summary",
+          "recipient_count", "read_count", "delivery_summary",
         ],
         orderBy: "creation desc",
         limit: 50,
@@ -239,6 +251,11 @@ function BroadcastsTab() {
               {session.canBroadcast &&
                 ` · ${n.send_to_all_students ? "all students" : n.recipient_count ? `${n.recipient_count} student${n.recipient_count === 1 ? "" : "s"}` : "selected recipients"}`}
             </p>
+            {session.canBroadcast && !!n.recipient_count && (
+              <p className="text-[11px] font-medium text-slate-500">
+                Read by {n.read_count ?? 0} of {n.recipient_count} famil{n.recipient_count === 1 ? "y" : "ies"}
+              </p>
+            )}
             {session.canBroadcast && n.delivery_summary && <p className="text-[11px] text-slate-400">{n.delivery_summary}</p>}
           </Card>
         ))

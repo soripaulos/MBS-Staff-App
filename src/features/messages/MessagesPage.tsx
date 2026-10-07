@@ -36,6 +36,10 @@ interface Turn {
   text: string;
 }
 
+/** What the teacher needs to know: has the family seen it, have they answered. */
+const STATUS_LABEL: Record<string, string> = { Unread: "Not seen yet", Read: "Seen", Responded: "Replied" };
+const statusLabel = (status?: string | null) => (status ? STATUS_LABEL[status] ?? status : "");
+
 function turnsOf(row: TeacherParentMessageRow): Turn[] {
   const t: Turn[] = [];
   if (row.message) t.push({ from: "Teacher", at: row.message_date, text: stripHtml(row.message) });
@@ -241,7 +245,10 @@ function ComposeModal({ open, onClose, presetStudent }: { open: boolean; onClose
           />
         </div>
 
-        <p className="text-xs text-slate-400">The parent sees this in the student app's Hub and can reply there.</p>
+        <p className="text-xs text-slate-400">
+          Only this student's family gets it: an alert on the phones signed in to their account, and the message in the
+          student app's Hub, where they can reply. You will see "Seen" once they open it.
+        </p>
         <Button type="submit" className="w-full" disabled={!student || !message.trim() || m.isPending}>
           {m.isPending ? "Sending…" : "Send message"}
         </Button>
@@ -312,7 +319,7 @@ function ChatThread({ name, studentName, onBack }: { name: string; studentName: 
           <p className="truncate text-sm font-semibold">{studentName}</p>
           <p className="truncate text-xs text-slate-500">{q.data?.subject ?? ""}</p>
         </div>
-        {q.data?.status && <Badge tone={statusTone(q.data.status)}>{q.data.status === "Responded" ? "Parent replied" : q.data.status}</Badge>}
+        {q.data?.status && <Badge tone={q.data.status === "Responded" ? "green" : statusTone(q.data.status)}>{q.data.status === "Responded" ? "Parent replied" : statusLabel(q.data.status)}</Badge>}
       </div>
 
       <div className="scroll-thin flex-1 space-y-2 overflow-y-auto px-0.5 py-2">
@@ -415,7 +422,9 @@ export default function MessagesPage() {
     <div className="space-y-2">
       <Select className="max-w-44" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Status filter">
         {["All", "Unread", "Read", "Responded"].map((s) => (
-          <option key={s}>{s}</option>
+          <option key={s} value={s}>
+            {s === "All" ? "All" : statusLabel(s)}
+          </option>
         ))}
       </Select>
       {q.isLoading ? (
@@ -449,7 +458,7 @@ export default function MessagesPage() {
                 {row.status === "Responded" ? (
                   <Badge tone="green">Replied</Badge>
                 ) : (
-                  <Badge tone={statusTone(row.status)}>{row.status}</Badge>
+                  <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>
                 )}
               </Card>
             </button>

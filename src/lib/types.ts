@@ -119,6 +119,8 @@ export interface AppNotificationRow {
   creation?: string;
   /** Students the notification was addressed to, filled in when it is sent. */
   recipient_count?: number | null;
+  /** How many of those students' families have opened it in the app. */
+  read_count?: number | null;
   /** Per-device delivery outcome, e.g. "3 of 4 student(s) reached on 3 device(s)…". */
   delivery_summary?: string | null;
 }
