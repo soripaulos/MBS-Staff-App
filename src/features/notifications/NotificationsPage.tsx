@@ -180,11 +180,20 @@ function BroadcastsTab() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [category, setCategory] = useState("All");
   const q = useQuery({
-    queryKey: ["app-notifications", category],
+    queryKey: ["app-notifications", category, session.canBroadcast],
     queryFn: () =>
       getList<AppNotificationRow>("App Notification", {
-        filters: category === "All" ? [] : ([[["notification_category", "=", category]]][0] as never),
-        fields: ["name", "title", "status", "sent_date", "notification_category", "message", "send_to_all_students", "creation"],
+        filters: [
+          ...(category === "All" ? [] : [["notification_category", "=", category]]),
+          // Notifications addressed to one student (a teacher's message home,
+          // an incident report) are private to that family. Only the people
+          // who send broadcasts see those; everyone else sees school-wide ones.
+          ...(session.canBroadcast ? [] : [["send_to_all_students", "=", 1]]),
+        ] as never,
+        fields: [
+          "name", "title", "status", "sent_date", "notification_category", "message", "send_to_all_students", "creation",
+          "recipient_count", "delivery_summary",
+        ],
         orderBy: "creation desc",
         limit: 50,
       }),
@@ -227,8 +236,10 @@ function BroadcastsTab() {
             <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{n.message}</p>
             <p className="text-[11px] text-slate-400">
               {n.notification_category} · {formatDate((n.sent_date ?? n.creation)?.slice(0, 10))}
-              {session.canBroadcast && ` · ${n.send_to_all_students ? "all students" : "selected sections"}`}
+              {session.canBroadcast &&
+                ` · ${n.send_to_all_students ? "all students" : n.recipient_count ? `${n.recipient_count} student${n.recipient_count === 1 ? "" : "s"}` : "selected recipients"}`}
             </p>
+            {session.canBroadcast && n.delivery_summary && <p className="text-[11px] text-slate-400">{n.delivery_summary}</p>}
           </Card>
         ))
       )}

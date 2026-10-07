@@ -111,12 +111,16 @@ export interface NotificationLogRow {
 export interface AppNotificationRow {
   name: string;
   title: string;
-  status: "Draft" | "Sent" | "Failed";
+  status: "Draft" | "Sent" | "Partially Sent" | "Failed";
   sent_date?: string | null;
   notification_category: string;
   message: string;
   send_to_all_students?: 0 | 1;
   creation?: string;
+  /** Students the notification was addressed to, filled in when it is sent. */
+  recipient_count?: number | null;
+  /** Per-device delivery outcome, e.g. "3 of 4 student(s) reached on 3 device(s)…". */
+  delivery_summary?: string | null;
 }
 
 export interface TeacherParentMessageRow {

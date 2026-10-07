@@ -116,6 +116,7 @@ export function statusTone(status?: string): "slate" | "green" | "amber" | "red"
       return "green";
     case "Open":
     case "Pending":
+    case "Partially Sent":
     case "Draft":
     case "Unread":
     case "In Review":
